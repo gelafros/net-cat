@@ -1,18 +1,17 @@
-# 2) Accept connections + limit to 10
-
+# 3) Welcome screen + ask name (non-empty)
 ## Goal
 
-Accept multiple clients but cap at 10 active connections.
+On connect, show the ASCII welcome and ask for a non-empty name.
 
 ## Steps
 
-1. Keep a counter / list of active clients.
-2. When a connection arrives:
-    - If active >= 10: send a short message like `Server busy` and close.
-    - Else accept and start a goroutine to handle that client.
-3. When a client disconnects, decrement/remove from the active list.
+1. Write the welcome banner + linux logo to the connection.
+2. Prompt exactly: `[ENTER YOUR NAME]:`
+3. Read a line using bufio.Reader.
+4. If name is empty/only spaces → prompt again.
+5. Save the final name in the client struct.
 
 ## Done when
 
-- 11th client gets refused.
-- Existing clients stay connected.
+- Client cannot enter empty name.
+- Prompt repeats until valid.
