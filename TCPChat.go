@@ -26,52 +26,30 @@ func getPort(args []string) (string, error) {
 func handleClient(client net.Conn, serverMsg string, maxCapacity bool) {
 
 	if !maxCapacity {
-		var name string
 		fmt.Println("A new user has joined:", client.RemoteAddr())
 		client.Write([]byte(serverMsg))
-		reader := bufio.NewReader(client)
-		// name, _ := reader.ReadString('\n')
-		// name = strings.TrimSpace(name)
 
+		// Handshake loop for entering a valid name ("Continue" for invalid (empty name) / "Break" for valid names )
 		for {
-			input, err := reader.ReadString('\n')
+			reader := bufio.NewReader(client)
+			name, err := reader.ReadString('\n')
 			if err != nil {
 				fmt.Println("Failed to read username:", err)
 				client.Close()
 				return
 			}
-
-			name = strings.TrimSpace(input)
-			// if name != "" {
-			// 	break
-			// }
-
-			if name != "" {
-				message := strings.TrimSpace("Welcome to chat room, " + name + "\n")
-				client.Write([]byte(message + "\n"))
-				// if _, err := client.Write([]byte("You must enter a name to access the chat room.\n[ENTER YOUR NAME]: ")); err != nil {
-				// 	fmt.Println("Failed to re-prompt username:", err)
-				// 	client.Close()
-				// 	return
-				// }
+			name = strings.TrimSpace(name)
+			if name == "" {
+				client.Write([]byte("You must enter a name to access the chat room.\n[ENTER YOUR NAME]: "))
+				continue
+			} else {
+				message := strings.TrimSpace("Welcome to chat room, " + name)
+				client.Write([]byte(message)) // Message to Client
+				client.Write([]byte("\n"))
+				message = strings.TrimSpace("User \"" + name + "\" has entered the Chat Room")
+				fmt.Println(message) // Message to Server
+				break
 			}
-
-			// message := strings.TrimSpace("Welcome to chat room, " + name + "\n")
-			// client.Write([]byte(message))
-
-			// if name != "" {
-			// 	message := strings.TrimSpace("Welcome to chat room, " + name + "\n")
-			// 	client.Write([]byte(message + "\n"))
-
-			// 	// Message to Server with Print
-			// 	message = strings.TrimSpace("User \"" + name + "\" has enter the Chat Room!")
-			// 	fmt.Println(message)
-			// } else {
-			// 	client.Write([]byte("You must enter a Name for access the Chat room"))
-			// 	client.Write([]byte("[ENTER YOUR NAME]: "))
-			// 	client.Close()
-			// }
-
 		}
 	}
 }
