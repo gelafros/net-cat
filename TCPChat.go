@@ -23,6 +23,7 @@ func getPort(args []string) (string, error) {
 }
 
 func main() {
+
 	args := os.Args
 	port, err := getPort(args)
 	if err != nil {
@@ -41,6 +42,7 @@ func main() {
 	}
 	fmt.Println("Listening on the port", address)
 	server := handlers.NewServer()
+	go server.StartBroadcastLoop() //goroutine for broadcasting Client's messages (Goroutine = Infinite / It runs concurrently)
 
 	// Running loop for receiving multiple clients (Accept loop)
 	for {
@@ -49,6 +51,6 @@ func main() {
 			fmt.Println("Error with client connection:", err)
 			continue // for not terminating the Server
 		}
-		go handlers.HandleClient(client, server)
+		go handlers.HandleClient(client, server) //goroutine for handle each client (Goroutine = Infinite / It runs concurrently)
 	}
 }
