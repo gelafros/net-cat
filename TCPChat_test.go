@@ -5,6 +5,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"net-cat/handlers"
 )
 
 func TestGetPort(t *testing.T) {
@@ -36,13 +38,14 @@ func TestGetPort(t *testing.T) {
 	})
 }
 
-func TestHandleClient_RequiresNonEmptyName(t *testing.T) {
+func TestHandleClient_RequiresNonEmptyNameAndTrims(t *testing.T) {
+	server := handlers.NewServer()
 	serverConn, clientConn := net.Pipe()
 	defer clientConn.Close()
 
 	done := make(chan struct{})
 	go func() {
-		handleClient(serverConn, "[ENTER YOUR NAME]: ", false)
+		handlers.HandleClient(serverConn, server)
 		close(done)
 	}()
 
@@ -57,84 +60,77 @@ func TestHandleClient_RequiresNonEmptyName(t *testing.T) {
 
 	retryPrompt := readUntilContains(t, clientConn, "You must enter a name")
 	if !strings.Contains(retryPrompt, "[ENTER YOUR NAME]: ") {
-		t.Fatalf("expected retry name prompt, got %q", retryPrompt)
-	}
-
-	if _, err := clientConn.Write([]byte("Alice\n")); err != nil {
-		t.Fatalf("failed to send valid name: %v", err)
-	}
-
-	welcome := readUntilContains(t, clientConn, "Welcome to chat room, Alice\n")
-	if !strings.Contains(welcome, "Welcome to chat room, Alice") {
-		t.Fatalf("expected welcome message, got %q", welcome)
-	}
-
-	select {
-	case <-done:
-	case <-time.After(2 * time.Second):
-		t.Fatal("handleClient did not return after valid username")
-	}
-}
-
-func TestHandshake_RejectsEmptyAndTrimsName(t *testing.T) {
-	serverConn, clientConn := net.Pipe()
-	defer clientConn.Close()
-
-	result := make(chan string, 1)
-	go func() {
-		result <- handshake(serverConn)
-	}()
-
-	if _, err := clientConn.Write([]byte("\n")); err != nil {
-		t.Fatalf("failed to send empty name: %v", err)
-	}
-
-	retryPrompt := readUntilContains(t, clientConn, "You must enter a name")
-	if !strings.Contains(retryPrompt, "[ENTER YOUR NAME]: ") {
-		t.Fatalf("expected retry prompt after empty name, got %q", retryPrompt)
+		t.Fatalf("expected retry prompt, got %q", retryPrompt)
 	}
 
 	if _, err := clientConn.Write([]byte("   Bob   \n")); err != nil {
 		t.Fatalf("failed to send valid name: %v", err)
 	}
 
-	select {
-	case got := <-result:
-		if got != "Bob" {
-			t.Fatalf("expected trimmed name Bob, got %q", got)
-		}
-	case <-time.After(2 * time.Second):
-		t.Fatal("handshake did not return after valid username")
+	welcome := readUntilContains(t, clientConn, "Welcome to chat room, Bob")
+	if !strings.Contains(welcome, "Welcome to chat room, Bob") {
+		t.Fatalf("expected welcome message for Bob, got %q", welcome)
 	}
-}
 
-func TestHandleClient_ServerFullSkipsHandshake(t *testing.T) {
-	serverConn, clientConn := net.Pipe()
-	defer clientConn.Close()
-
-	done := make(chan struct{})
-	go func() {
-		handleClient(serverConn, "Server Busy", true)
-		close(done)
-	}()
-
+	_ = clientConn.Close()
 	select {
 	case <-done:
 	case <-time.After(2 * time.Second):
-		t.Fatal("handleClient did not return when server is full")
+		t.Fatal("HandleClient did not return after client disconnect")
+	}
+}
+
+func TestHandleClient_RejectsDuplicateName(t *testing.T) {
+	server := handlers.NewServer()
+
+	// First client claims "Alice".
+	serverConn1, clientConn1 := net.Pipe()
+	done1 := make(chan struct{})
+	go func() {
+		handlers.HandleClient(serverConn1, server)
+		close(done1)
+	}()
+	readUntilContains(t, clientConn1, "[ENTER YOUR NAME]: ")
+	if _, err := clientConn1.Write([]byte("Alice\n")); err != nil {
+		t.Fatalf("first client failed to send name: %v", err)
+	}
+	readUntilContains(t, clientConn1, "Welcome to chat room, Alice")
+
+	// Second client tries same name, then a new one.
+	serverConn2, clientConn2 := net.Pipe()
+	defer clientConn2.Close()
+	done2 := make(chan struct{})
+	go func() {
+		handlers.HandleClient(serverConn2, server)
+		close(done2)
+	}()
+	readUntilContains(t, clientConn2, "[ENTER YOUR NAME]: ")
+
+	if _, err := clientConn2.Write([]byte("Alice\n")); err != nil {
+		t.Fatalf("second client failed to send duplicate name: %v", err)
+	}
+	dupMsg := readUntilContains(t, clientConn2, "Name in use or server full.")
+	if !strings.Contains(dupMsg, "[ENTER YOUR NAME]: ") {
+		t.Fatalf("expected re-prompt after duplicate name, got %q", dupMsg)
 	}
 
-	if err := clientConn.SetReadDeadline(time.Now().Add(200 * time.Millisecond)); err != nil {
-		t.Fatalf("failed to set read deadline: %v", err)
+	if _, err := clientConn2.Write([]byte("Alice2\n")); err != nil {
+		t.Fatalf("second client failed to send unique name: %v", err)
 	}
+	readUntilContains(t, clientConn2, "Welcome to chat room, Alice2")
 
-	var buf [1]byte
-	_, err := clientConn.Read(buf[:])
-	if err == nil {
-		t.Fatal("expected no data from handleClient when server is full")
+	_ = clientConn1.Close()
+	_ = clientConn2.Close()
+
+	select {
+	case <-done1:
+	case <-time.After(2 * time.Second):
+		t.Fatal("first HandleClient goroutine did not return")
 	}
-	if ne, ok := err.(net.Error); !ok || !ne.Timeout() {
-		t.Fatalf("expected read timeout with no data, got %v", err)
+	select {
+	case <-done2:
+	case <-time.After(2 * time.Second):
+		t.Fatal("second HandleClient goroutine did not return")
 	}
 }
 
