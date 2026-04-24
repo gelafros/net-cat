@@ -14,8 +14,9 @@ type Message struct {
 }
 
 // Handshake Client with Server ("Continue" for invalid (empty name) / "Break" for valid names )
-func handshake(client net.Conn, userInput string, err error) string {
+func handshake(client net.Conn, server *Server, reader *bufio.Reader) (string, error) {
 	var validName string
+	var validError error
 	const chatLogo = "Welcome to TCP-Chat!\n" +
 		"         _nnnn_\n" +
 		"        dGGGGMMb\n" +
@@ -35,81 +36,82 @@ func handshake(client net.Conn, userInput string, err error) string {
 		"     `-'       `--'\n" +
 		"[ENTER YOUR NAME]: "
 	client.Write([]byte(chatLogo))
-	// reader := bufio.NewReader(client)
+
+	// Loop for accepting User's input
 	for {
-		// name, err := reader.ReadString('\n')
+		userInput, err := userMessage(reader)
 		if err != nil {
 			fmt.Println("Failed to read username:", err)
+			validError = err
 			client.Close()
 			break
 		}
-		// name = strings.TrimSpace(name) // Clean name from spaces (trim)
 		if userInput == "" {
 			client.Write([]byte("You must enter a name to access the chat room.\n[ENTER YOUR NAME]: "))
 			continue // Keep the loop
-		} else {
-			validName = userInput
-			break // End the loop after a given valid name
 		}
+
+		if !server.TryToAddClient(client, userInput) {
+			client.Write([]byte("Name in use or server full.\n[ENTER YOUR NAME]: "))
+			continue
+		}
+
+		//Accept User (if not two above conditions are true)
+		message := strings.TrimSpace("Welcome to chat room, " + userInput)
+		client.Write([]byte(message)) // Message to Client
+		client.Write([]byte("\n"))
+		message = strings.TrimSpace("User [" + userInput + "] has entered the Chat room")
+		fmt.Println(message) // Message to Server
+		validName = userInput
+		validError = nil
+		break // End of the "Acception" loop
 	}
-	return validName
+	return validName, validError
 }
 
-func userMessage(client net.Conn) (string, error) {
+func userMessage(reader *bufio.Reader) (string, error) {
 	var msg string
-	reader := bufio.NewReader(client)
 	msg, err := reader.ReadString(('\n'))
 	if err != nil {
+		// fmt.Println("Failed in userMessage:", err)
 		return "", err
 	}
 	msg = strings.TrimSpace(msg)
-	return msg, nil
+	return msg, err
 }
 
 // Handling EACH client that connects to the server
-
 func HandleClient(client net.Conn, server *Server) {
-	var clientName string
-	// reader := bufio.NewReader(client)
-	// msg, err := reader.ReadString(('\n'))
-	// if err != nil {
-	// 	fmt.Println("Error in reading User input:", err)
-	// } else {
-	// 	err = nil
-	// }
-	// msg = strings.TrimSpace(msg)
-	msg := userMessage(client)
-	clientName = handshake(client, msg, err)
+	var clName string
 
-	server.clientList[client] = clientName
-	message := strings.TrimSpace("Welcome to chat room, " + clientName)
-	client.Write([]byte(message)) // Message to Client
-	client.Write([]byte("\n"))
-	server.clientList[client] = clientName // register Client's name to list
-	message = strings.TrimSpace("User \"" + clientName + "\" has entered the Chat Room")
-	fmt.Println(message) // Message to Server
-	fmt.Println("Client list from Server:", server.clientList)
+	reader := bufio.NewReader(client)                    // only ONE reader for this client
+	clientName, err := handshake(client, server, reader) // User login with name
 
+	if err != nil {
+		client.Close()
+		return
+	}
+	clName = clientName
+
+	// Waiting for Client input loop
 	for {
-		message, err := userMessage(client)
+		message, err := userMessage(reader) // Re-use same reader
 		if err != nil {
-			delete(server.clientList, client)
-			client.Close()
-			fmt.Println(strings.TrimSpace("User \"" + clientName + "\" disconnected"))
-			fmt.Println("Client list from Server:", server.clientList)
-			// return
+			// delete(server.clientList, client)
+			client.Close()              // disconnect client
+			server.RemoveClient(client) // Use server method RemoveClient(client) for securely remove client
+			fmt.Println(strings.TrimSpace("User [" + clName + "] has left the Chat room"))
 			break
 		}
 		if message == "" {
 			continue
 		}
-		// fmt.Println(clientName, " said:", message)
+
+		// Register userMessage to server.broadcast channel
 		server.broadcast <- Message{
 			Sender:  client,
-			Name:    clientName,
+			Name:    clName,
 			Content: message,
 		}
 	}
-
-	// server.broadcast[message] = readInput(client)
 }
