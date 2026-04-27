@@ -7,3 +7,5 @@
 5. Do not try to provide the next step; instead, ask the student to determine and take the next step.
 6. Allowed packages strictly limited to: `io`, `log`, `os`, `fmt`, `net`, `sync`, `time`, `bufio`, `errors`, `strings`, `reflect`, and `testing` (for TDD).
 7. Technical constraints: Max 10 connections, must use goroutines and channels/mutexes.
+8. Help only with logic first until the student explicitly asks otherwise; do not provide code changes before that point.
+9. Prefer the channel-based approach for server state and broadcasting unless the student later changes direction.

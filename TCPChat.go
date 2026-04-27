@@ -5,30 +5,11 @@ import (
 	"fmt"
 	"net"
 	"os"
+
+	"net-cat/handlers"
 )
 
-func main() {
-	args := os.Args
-	port, err := getPort(args)
-	if err != nil {
-		fmt.Println(err)
-		return
-	}
-
-	network := "tcp"
-	address := ":" + port
-
-	listener, err := net.Listen(network, address)
-	if err != nil {
-		fmt.Println("Error listening:", err)
-		os.Exit(1)
-		return
-	}
-
-	fmt.Println("Listening on the port", address)
-}
-
-// Reading the correct port
+// Handling Arguments (correct port)
 func getPort(args []string) (string, error) {
 	if len(args) == 1 {
 		return "8989", nil
@@ -39,4 +20,36 @@ func getPort(args []string) (string, error) {
 	}
 
 	return "", errors.New("[USAGE]: ./TCPChat $port")
+}
+
+func main() {
+	args := os.Args
+	port, err := getPort(args)
+	if err != nil {
+		fmt.Println("Error in getting port.", err)
+		return
+	}
+	network := "tcp"
+	address := ":" + port
+
+	// Create a server in port "address". Listener is a handler for the server
+	listener, err := net.Listen(network, address)
+	if err != nil {
+		fmt.Println("Error listening:", err)
+		os.Exit(1)
+		return
+	}
+	fmt.Println("Listening on the port", address)
+	server := handlers.NewServer()
+	go server.StartBroadcastLoop() // goroutine for broadcasting Client's messages (Goroutine = Infinite / It runs concurrently)
+
+	// Running loop for receiving multiple clients (Accept loop)
+	for {
+		client, err := listener.Accept()
+		if err != nil {
+			fmt.Println("Error with client connection:", err)
+			continue // for not terminating the Server
+		}
+		go handlers.HandleClient(client, server) // goroutine for handle each client (Goroutine = Infinite / It runs concurrently)
+	}
 }
