@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"os"
+	"sync"
 )
 
 func main() {
@@ -24,8 +25,31 @@ func main() {
 		os.Exit(1)
 		return
 	}
-
 	fmt.Println("Listening on the port", address)
+
+	users := 0
+	var key sync.Mutex
+
+	for {
+		conn, err := listener.Accept()
+
+		if err != nil {
+			fmt.Println("Error accepting connection:", err)
+			continue
+		} else {
+			key.Lock()
+			if users == 10 {
+				fmt.Fprintln(conn, "Server busy")
+				conn.Close()
+				key.Unlock()
+				continue
+			} else {
+				users++
+				key.Unlock()
+			}
+		}
+
+	}
 }
 
 // Reading the correct port
