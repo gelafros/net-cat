@@ -76,21 +76,38 @@ func HandleClient(conn net.Conn, clients map[net.Conn]string, key *sync.Mutex, b
 
 	// The username chosen by the client
 	name = msgscanner.Text()
-	// Keep looping until a non-empty name is provided
-	for name == "" {
-		if _, err := fmt.Fprintln(conn, "Invalid name, try again stupid"); err != nil {
-			log.Printf("Write error to %s: %v\n", addr, err)
-			return
+	// Keep looping until a valid and unique name is provided
+	for {
+		if name == "" {
+			if _, err := fmt.Fprintln(conn, "Invalid name, try again stupid"); err != nil {
+				log.Printf("Write error to %s: %v\n", addr, err)
+				return
+			}
+		} else {
+			key.Lock()
+			isTaken := false
+			for _, existingName := range clients {
+				if existingName == name {
+					isTaken = true
+					break
+				}
+			}
+			if !isTaken {
+				clients[conn] = name // Claim the name while still locked
+				key.Unlock()
+				break
+			}
+			key.Unlock()
+			if _, err := fmt.Fprintln(conn, "Name already taken, try another"); err != nil {
+				log.Printf("Write error to %s: %v\n", addr, err)
+				return
+			}
 		}
 		if msgscanner.Scan() == false {
 			return
 		}
 		name = msgscanner.Text()
 	}
-
-	key.Lock()
-	clients[conn] = name
-	key.Unlock()
 
 	key.Lock()
 	for _, historyMsg := range *history {
@@ -129,30 +146,17 @@ func HandleClient(conn net.Conn, clients map[net.Conn]string, key *sync.Mutex, b
 		}
 
 		// Check if the user is trying to change their color
-		if strings.HasPrefix(msg, "--color") {
-			colorInput := strings.TrimSpace(strings.TrimPrefix(msg, "--color"))
-			colorInput = strings.TrimPrefix(colorInput, "=")
-			colorInput = strings.TrimSpace(colorInput)
-
-			switch strings.ToLower(colorInput) {
-			case "red":
-				colorCode = "\033[31m"
-			case "green":
-				colorCode = "\033[32m"
-			case "yellow":
-				colorCode = "\033[33m"
-			case "blue":
-				colorCode = "\033[34m"
-			case "magenta":
-				colorCode = "\033[35m"
-			case "cyan":
-				colorCode = "\033[36m"
-			case "reset":
-				colorCode = "\033[0m"
-			default:
-				fmt.Fprintln(conn, "Unknown color. Try: red, green, yellow, blue, magenta, cyan, reset")
+		if newColor, isColorCmd := handleColor(msg, conn); isColorCmd {
+			if newColor != "" {
+				colorCode = newColor
 			}
 			// Redraw the prompt and skip broadcasting this command
+			fmt.Fprintf(conn, "[%s][%s]:", time.Now().Format("2006-01-02 15:04:05"), name)
+			continue
+		}
+
+		// Check if the user is trying to change their name
+		if isNameCmd := handleName(msg, conn, &name, clients, key, broadcast, history); isNameCmd {
 			fmt.Fprintf(conn, "[%s][%s]:", time.Now().Format("2006-01-02 15:04:05"), name)
 			continue
 		}
@@ -176,4 +180,78 @@ func HandleClient(conn net.Conn, clients map[net.Conn]string, key *sync.Mutex, b
 	if err := msgscanner.Err(); err != nil {
 		log.Printf("Read error from %s: %v\n", addr, err)
 	}
+}
+
+// handleColorCmd parses a color command. Returns the ANSI color string and a boolean indicating if it was a color command.
+func handleColor(msg string, conn net.Conn) (string, bool) {
+	if !strings.HasPrefix(msg, "--color") {
+		return "", false
+	}
+
+	colorInput := strings.TrimSpace(strings.TrimPrefix(msg, "--color"))
+	colorInput = strings.TrimPrefix(colorInput, "=")
+	colorInput = strings.TrimSpace(colorInput)
+
+	switch strings.ToLower(colorInput) {
+	case "red":
+		return "\033[31m", true
+	case "green":
+		return "\033[32m", true
+	case "yellow":
+		return "\033[33m", true
+	case "blue":
+		return "\033[34m", true
+	case "magenta":
+		return "\033[35m", true
+	case "cyan":
+		return "\033[36m", true
+	case "reset":
+		return "\033[0m", true
+	default:
+		fmt.Fprintln(conn, "Unknown color. Try: red, green, yellow, blue, magenta, cyan, reset")
+		return "", true
+	}
+}
+
+// handleNameCmd updates the user's name across the server state if a name command is issued.
+func handleName(msg string, conn net.Conn, name *string, clients map[net.Conn]string, key *sync.Mutex, broadcast chan Message, history *[]string) bool {
+	if !strings.HasPrefix(msg, "--name") {
+		return false
+	}
+
+	newName := strings.TrimSpace(strings.TrimPrefix(msg, "--name"))
+	newName = strings.TrimPrefix(newName, "=")
+	newName = strings.TrimSpace(newName)
+
+	if newName == "" {
+		fmt.Fprintln(conn, "Name cannot be empty. Try: --name=NewName")
+		return true
+	}
+
+	key.Lock()
+	isTaken := false
+	for _, existingName := range clients {
+		if existingName == newName {
+			isTaken = true
+			break
+		}
+	}
+	if isTaken {
+		key.Unlock()
+		fmt.Fprintln(conn, "Name already in use. Try a different name.")
+		return true
+	}
+
+	oldName := *name
+	*name = newName // Update new name
+
+	clients[conn] = *name // Update name in the central map
+	changeMsg := fmt.Sprintf("%s changed their name to %s", oldName, *name)
+	*history = append(*history, changeMsg)
+	key.Unlock()
+
+	fmt.Fprintln(conn, changeMsg)                       // Echo to sender
+	broadcast <- Message{Text: changeMsg, Sender: conn} // Broadcast to others
+
+	return true
 }
