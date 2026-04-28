@@ -159,6 +159,10 @@ func HandleClient(conn net.Conn, clients map[net.Conn]string, key *sync.Mutex, b
 
 		// Format the message and send it to the central broadcast channel.
 		formattedMsg := fmt.Sprintf("%s[%s][%s]:%s\033[0m", colorCode, time.Now().Format("2006-01-02 15:04:05"), name, msg)
+
+		// Echo the fully formatted and colored message back to the sender!
+		fmt.Fprintln(conn, formattedMsg)
+
 		key.Lock()
 		*history = append(*history, formattedMsg)
 		key.Unlock()
