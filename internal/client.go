@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"fmt"
 	"net"
+	"strings"
 	"sync"
 	"time"
 )
@@ -15,10 +16,11 @@ func HandleClient(conn net.Conn, clients map[net.Conn]bool, key *sync.Mutex, bro
 	defer func() {
 		key.Lock()
 		delete(clients, conn)
+		key.Unlock()
+
 		if name != "" {
 			broadcast <- fmt.Sprintf("[%s] [%s] has left our chat...", time.Now().Format("2006-01-02 15:04:05"), name)
 		}
-		key.Unlock()
 		conn.Close()
 	}()
 
@@ -40,16 +42,17 @@ func HandleClient(conn net.Conn, clients map[net.Conn]bool, key *sync.Mutex, bro
 	}
 
 	fmt.Fprintln(conn, "Welcome", name)
-	key.Lock()
 	broadcast <- fmt.Sprintf("[%s] [%s] has joined our chat...", time.Now().Format("2006-01-02 15:04:05"), name)
-	key.Unlock()
 
 	// Continuously wait for new messages from this client
 	for msgscanner.Scan() {
 		// The actual chat message typed by the client
 		msg := msgscanner.Text()
+		if strings.TrimSpace(msg) == "" {
+			continue
+		}
 		// Format the message and send it to the central broadcast channel.
-		formattedMsg := fmt.Sprintf("[%s] [%s]: %s", time.Now().Format("2006-01-02 15:04:05"), name, msg)
+		formattedMsg := fmt.Sprintf("[%s][%s]:%s", time.Now().Format("2006-01-02 15:04:05"), name, msg)
 		broadcast <- formattedMsg
 	}
 }
