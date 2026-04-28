@@ -35,8 +35,26 @@ func HandleClient(conn net.Conn, clients map[net.Conn]bool, key *sync.Mutex, bro
 		conn.Close()
 	}()
 
-	// Make new users to enter their name
-	if _, err := fmt.Fprintln(conn, "[ENTER YOUR NAME]"); err != nil {
+	// Welcome message and ASCII art logo
+	logo := "Welcome to TCP-Chat!\n" +
+		"         _nnnn_\n" +
+		"        dGGGGMMb\n" +
+		"       @p~qp~~qMb\n" +
+		"       M|@||@) M|\n" +
+		"       @,----.JM|\n" +
+		"      JS^\\__/  qKL\n" +
+		"     dZP        qKRb\n" +
+		"    dZP          qKKb\n" +
+		"   fZP            SMMb\n" +
+		"   HZM            MMMM\n" +
+		"   FqM            MMMM\n" +
+		" __| \".        |\\dS\"qML\n" +
+		" |    `.       | `' \\Zq\n" +
+		"_)      \\.___.,|     .'\n" +
+		"\\____   )MMMMMP|   .'\n" +
+		"     `-'       `--'\n" +
+		"[ENTER YOUR NAME]: "
+	if _, err := fmt.Fprint(conn, logo); err != nil {
 		log.Printf("Write error to %s: %v\n", addr, err)
 		return
 	}
@@ -52,7 +70,7 @@ func HandleClient(conn net.Conn, clients map[net.Conn]bool, key *sync.Mutex, bro
 	name = msgscanner.Text()
 	// Keep looping until a non-empty name is provided
 	for name == "" {
-		if _, err := fmt.Fprintln(conn, "Invalid name, try again"); err != nil {
+		if _, err := fmt.Fprintln(conn, "Invalid name, try again stupid"); err != nil {
 			log.Printf("Write error to %s: %v\n", addr, err)
 			return
 		}
