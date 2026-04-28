@@ -83,7 +83,9 @@ func HandleClient(conn net.Conn, clients map[net.Conn]string, key *sync.Mutex, b
 				log.Printf("Write error to %s: %v\n", addr, err)
 				return
 			}
+			fmt.Fprint(conn, "[ENTER YOUR NAME]: ")
 		} else {
+			// Safely check if the name is already used
 			key.Lock()
 			isTaken := false
 			for _, existingName := range clients {
@@ -102,6 +104,7 @@ func HandleClient(conn net.Conn, clients map[net.Conn]string, key *sync.Mutex, b
 				log.Printf("Write error to %s: %v\n", addr, err)
 				return
 			}
+			fmt.Fprint(conn, "[ENTER YOUR NAME]: ")
 		}
 		if msgscanner.Scan() == false {
 			return
@@ -109,6 +112,17 @@ func HandleClient(conn net.Conn, clients map[net.Conn]string, key *sync.Mutex, b
 		name = msgscanner.Text()
 	}
 
+	// Show the available commands to the user
+	instructions := "Available commands:\n" +
+		"  --color=<color>  Change your message color (e.g., --color=red)\n" +
+		"  --name=<name>    Change your display name (e.g., --name=Bob)\n" +
+		"  --tableflip      Flip a table\n"
+	if _, err := fmt.Fprintln(conn, instructions); err != nil {
+		log.Printf("Write error to %s: %v\n", addr, err)
+		return
+	}
+
+	// Print the past chat history for the new user
 	key.Lock()
 	for _, historyMsg := range *history {
 		if _, err := fmt.Fprintln(conn, historyMsg); err != nil {
@@ -161,6 +175,11 @@ func HandleClient(conn net.Conn, clients map[net.Conn]string, key *sync.Mutex, b
 			continue
 		}
 
+		// Check if the user wants to flip a table
+		if strings.TrimSpace(msg) == "--tableflip" {
+			msg = "(╯°□°）╯︵ ┻━┻"
+		}
+
 		// Format the message and send it to the central broadcast channel.
 		formattedMsg := fmt.Sprintf("%s[%s][%s]:%s\033[0m", colorCode, time.Now().Format("2006-01-02 15:04:05"), name, msg)
 
@@ -182,12 +201,13 @@ func HandleClient(conn net.Conn, clients map[net.Conn]string, key *sync.Mutex, b
 	}
 }
 
-// handleColorCmd parses a color command. Returns the ANSI color string and a boolean indicating if it was a color command.
+// Checks if the user typed a color command and returns the color code
 func handleColor(msg string, conn net.Conn) (string, bool) {
 	if !strings.HasPrefix(msg, "--color") {
 		return "", false
 	}
 
+	// Remove "--color" and "=" to get just the color name
 	colorInput := strings.TrimSpace(strings.TrimPrefix(msg, "--color"))
 	colorInput = strings.TrimPrefix(colorInput, "=")
 	colorInput = strings.TrimSpace(colorInput)
@@ -213,12 +233,13 @@ func handleColor(msg string, conn net.Conn) (string, bool) {
 	}
 }
 
-// handleNameCmd updates the user's name across the server state if a name command is issued.
+// Changes the user's name if they use the name command and the name is free
 func handleName(msg string, conn net.Conn, name *string, clients map[net.Conn]string, key *sync.Mutex, broadcast chan Message, history *[]string) bool {
 	if !strings.HasPrefix(msg, "--name") {
 		return false
 	}
 
+	// Remove "--name" and "=" to get the new name
 	newName := strings.TrimSpace(strings.TrimPrefix(msg, "--name"))
 	newName = strings.TrimPrefix(newName, "=")
 	newName = strings.TrimSpace(newName)
@@ -228,6 +249,7 @@ func handleName(msg string, conn net.Conn, name *string, clients map[net.Conn]st
 		return true
 	}
 
+	// Check if the new name is already taken
 	key.Lock()
 	isTaken := false
 	for _, existingName := range clients {

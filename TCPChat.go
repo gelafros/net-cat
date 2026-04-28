@@ -23,6 +23,8 @@ func main() {
 	clients := make(map[net.Conn]string)
 	// Mutex key to prevent data races when multiple goroutines access the clients map
 	var key sync.Mutex
+
+	// Channel for central message broadcasting
 	broadcast := make(chan internal.Message)
 
 	// Slice to hold the chat history so new clients can instantly catch up
@@ -62,8 +64,7 @@ func main() {
 	}
 }
 
-// broadcaster is a background goroutine that continuously listens for incoming
-// messages on the broadcast channel and distributes them to all active clients.
+// Background goroutine that listens for messages and sends them to all clients
 func broadcaster(broadcast chan internal.Message, clients map[net.Conn]string, key *sync.Mutex) {
 	for {
 		// Pause and wait for a new message to be sent into the channel
