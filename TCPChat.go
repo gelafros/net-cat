@@ -72,13 +72,12 @@ func broadcaster(broadcast chan internal.Message, clients map[net.Conn]string, k
 		key.Lock()
 		// Send the message to every connected client in the chat room
 		for receiver, receiverName := range clients {
-			if receiver != msg.Sender {
+			// Only send to clients who have joined (have a name) and aren't the sender
+			if receiver != msg.Sender && receiverName != "" {
 				if _, err := fmt.Fprintln(receiver, "\n"+msg.Text); err != nil {
 					log.Printf("Error sending message to %s: %v\n", receiver.RemoteAddr().String(), err)
 				}
-				if receiverName != "" {
-					fmt.Fprintf(receiver, "[%s][%s]:", time.Now().Format("2006-01-02 15:04:05"), receiverName)
-				}
+				fmt.Fprintf(receiver, "[%s][%s]:", time.Now().Format("2006-01-02 15:04:05"), receiverName)
 			}
 		}
 		key.Unlock()

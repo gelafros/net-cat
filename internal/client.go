@@ -19,6 +19,9 @@ type Message struct {
 func HandleClient(conn net.Conn, clients map[net.Conn]string, key *sync.Mutex, broadcast chan Message, history *[]string) {
 	var name string
 
+	// Default color is standard terminal color (ANSI reset code)
+	colorCode := "\033[0m"
+
 	// Capture the client's network address for our server logs
 	addr := conn.RemoteAddr().String()
 
@@ -30,7 +33,7 @@ func HandleClient(conn net.Conn, clients map[net.Conn]string, key *sync.Mutex, b
 
 		// If the user successfully joined
 		if name != "" {
-			leaveMsg := fmt.Sprintf("[%s] [%s] has left our chat...", time.Now().Format("2006-01-02 15:04:05"), name)
+			leaveMsg := fmt.Sprintf("%s has left our chat...", name)
 			key.Lock()
 			*history = append(*history, leaveMsg)
 			key.Unlock()
@@ -89,11 +92,6 @@ func HandleClient(conn net.Conn, clients map[net.Conn]string, key *sync.Mutex, b
 	clients[conn] = name
 	key.Unlock()
 
-	if _, err := fmt.Fprintln(conn, "Welcome", name); err != nil {
-		log.Printf("Write error to %s: %v\n", addr, err)
-		return
-	}
-	key.Lock()
 	for _, historyMsg := range *history {
 		if _, err := fmt.Fprintln(conn, historyMsg); err != nil {
 			log.Printf("Write error to %s: %v\n", addr, err)
@@ -103,7 +101,7 @@ func HandleClient(conn net.Conn, clients map[net.Conn]string, key *sync.Mutex, b
 	key.Unlock()
 
 	// Announce the new client to the rest of the chat room
-	joinMsg := fmt.Sprintf("[%s] [%s] has joined our chat...", time.Now().Format("2006-01-02 15:04:05"), name)
+	joinMsg := fmt.Sprintf("%s has joined our chat...", name)
 	key.Lock()
 	*history = append(*history, joinMsg)
 	key.Unlock()
@@ -124,8 +122,38 @@ func HandleClient(conn net.Conn, clients map[net.Conn]string, key *sync.Mutex, b
 			fmt.Fprintf(conn, "[%s][%s]:", time.Now().Format("2006-01-02 15:04:05"), name)
 			continue
 		}
+
+		// Check if the user is trying to change their color
+		if strings.HasPrefix(msg, "--color") {
+			colorInput := strings.TrimSpace(strings.TrimPrefix(msg, "--color"))
+			colorInput = strings.TrimPrefix(colorInput, "=")
+			colorInput = strings.TrimSpace(colorInput)
+
+			switch strings.ToLower(colorInput) {
+			case "red":
+				colorCode = "\033[31m"
+			case "green":
+				colorCode = "\033[32m"
+			case "yellow":
+				colorCode = "\033[33m"
+			case "blue":
+				colorCode = "\033[34m"
+			case "magenta":
+				colorCode = "\033[35m"
+			case "cyan":
+				colorCode = "\033[36m"
+			case "reset":
+				colorCode = "\033[0m"
+			default:
+				fmt.Fprintln(conn, "Unknown color. Try: red, green, yellow, blue, magenta, cyan, reset")
+			}
+			// Redraw the prompt and skip broadcasting this command
+			fmt.Fprintf(conn, "[%s][%s]:", time.Now().Format("2006-01-02 15:04:05"), name)
+			continue
+		}
+
 		// Format the message and send it to the central broadcast channel.
-		formattedMsg := fmt.Sprintf("[%s][%s]:%s", time.Now().Format("2006-01-02 15:04:05"), name, msg)
+		formattedMsg := fmt.Sprintf("%s[%s][%s]:%s\033[0m", colorCode, time.Now().Format("2006-01-02 15:04:05"), name, msg)
 		key.Lock()
 		*history = append(*history, formattedMsg)
 		key.Unlock()
