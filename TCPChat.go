@@ -19,10 +19,10 @@ func main() {
 	}
 
 	// Map to keep track of all currently connected clients
-	clients := make(map[net.Conn]bool)
+	clients := make(map[net.Conn]string)
 	// Mutex key to prevent data races when multiple goroutines access the clients map
 	var key sync.Mutex
-	broadcast := make(chan string)
+	broadcast := make(chan internal.Message)
 
 	// Slice to hold the chat history so new clients can instantly catch up
 	var history []string
@@ -50,7 +50,7 @@ func main() {
 				continue
 			} else {
 				// Add the new client to the active clients map
-				clients[conn] = true
+				clients[conn] = ""
 				key.Unlock()
 
 				// Start a new goroutine to handle this client concurrently so the loop isn't blocked
@@ -63,11 +63,11 @@ func main() {
 
 // broadcaster is a background goroutine that continuously listens for incoming
 // messages on the broadcast channel and distributes them to all active clients.
-func broadcaster(broadcast chan string, clients map[net.Conn]bool, key *sync.Mutex) {
+func broadcaster(broadcast chan internal.Message, clients map[net.Conn]string, key *sync.Mutex) {
 	for {
 		// Pause and wait for a new message to be sent into the channel
 		msg := <-broadcast
-		
+
 		key.Lock()
 		// Send the message to every connected client in the chat room
 		for receiver := range clients {

@@ -10,8 +10,13 @@ import (
 	"time"
 )
 
+type Message struct {
+	Text   string
+	Sender net.Conn
+}
+
 // Handles conns,names,chat history,and broadcasts names
-func HandleClient(conn net.Conn, clients map[net.Conn]bool, key *sync.Mutex, broadcast chan string, history *[]string) {
+func HandleClient(conn net.Conn, clients map[net.Conn]string, key *sync.Mutex, broadcast chan Message, history *[]string) {
 	var name string
 
 	// Capture the client's network address for our server logs
@@ -29,7 +34,7 @@ func HandleClient(conn net.Conn, clients map[net.Conn]bool, key *sync.Mutex, bro
 			key.Lock()
 			*history = append(*history, leaveMsg)
 			key.Unlock()
-			broadcast <- leaveMsg
+			broadcast <- Message{Text: leaveMsg, Sender: conn}
 		}
 		log.Printf("Client disconnected: %s\n", addr)
 		conn.Close()
@@ -80,6 +85,10 @@ func HandleClient(conn net.Conn, clients map[net.Conn]bool, key *sync.Mutex, bro
 		name = msgscanner.Text()
 	}
 
+	key.Lock()
+	clients[conn] = name
+	key.Unlock()
+
 	if _, err := fmt.Fprintln(conn, "Welcome", name); err != nil {
 		log.Printf("Write error to %s: %v\n", addr, err)
 		return
@@ -100,7 +109,7 @@ func HandleClient(conn net.Conn, clients map[net.Conn]bool, key *sync.Mutex, bro
 	key.Unlock()
 
 	// Send the join message to the central broadcast to send to receivers
-	broadcast <- joinMsg
+	broadcast <- Message{Text: joinMsg, Sender: conn}
 
 	// Wait for new messages from this client
 	for msgscanner.Scan() {
@@ -115,7 +124,7 @@ func HandleClient(conn net.Conn, clients map[net.Conn]bool, key *sync.Mutex, bro
 		key.Lock()
 		*history = append(*history, formattedMsg)
 		key.Unlock()
-		broadcast <- formattedMsg
+		broadcast <- Message{Text: formattedMsg, Sender: conn}
 	}
 
 	// Log if the scanner stopped due to a network error instead of EOF
