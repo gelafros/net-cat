@@ -33,7 +33,7 @@ func TestGetPort(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			port, err := getPort(tt.args)
+			port, err := handlers.getPort(tt.args)
 
 			if (err != nil) != tt.expectedError {
 				t.Errorf("expected error: %v, got error: %v", tt.expectedError, err)
