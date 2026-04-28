@@ -92,6 +92,7 @@ func HandleClient(conn net.Conn, clients map[net.Conn]string, key *sync.Mutex, b
 	clients[conn] = name
 	key.Unlock()
 
+	key.Lock()
 	for _, historyMsg := range *history {
 		if _, err := fmt.Fprintln(conn, historyMsg); err != nil {
 			log.Printf("Write error to %s: %v\n", addr, err)
