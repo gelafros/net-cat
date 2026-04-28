@@ -117,6 +117,10 @@ func HandleClient(conn net.Conn, clients map[net.Conn]string, key *sync.Mutex, b
 	for msgscanner.Scan() {
 		// The actual msg typed by the client
 		msg := msgscanner.Text()
+
+		// Move the cursor up and erase the raw input line from their terminal
+		fmt.Fprint(conn, "\033[1A\r\033[2K")
+
 		// Ignore empty lines to prevent chat spam
 		if strings.TrimSpace(msg) == "" {
 			// Redraw the prompt if they send an empty message
