@@ -2,11 +2,11 @@ package internal
 
 import (
 	"errors"
-	"fmt"
+	"log"
 	"net"
 )
 
-// Reading the correct port
+// Decides which port we are listening on. Default 8989
 func getPort(args []string) (string, error) {
 	if len(args) == 1 {
 		return "8989", nil
@@ -19,6 +19,7 @@ func getPort(args []string) (string, error) {
 	return "", errors.New("[USAGE]: ./TCPChat $port")
 }
 
+// StartServer starts a TCP listener
 func StartServer(args []string) (net.Listener, error) {
 	// The port number the server will listen on
 	port, err := getPort(args)
@@ -26,16 +27,16 @@ func StartServer(args []string) (net.Listener, error) {
 		return nil, err
 	}
 
-	// The type of network protocol and the full address (e.g., ":8989")
+	// The type of protocol and the address(port)
 	network := "tcp"
 	address := ":" + port
 
-	// The object that waits for new incoming network connections
+	// The object that waits for connections
 	listener, err := net.Listen(network, address)
 	if err != nil {
 		return nil, err
 	}
-	fmt.Println("Listening on the port", address)
+	log.Println("Listening on the port", address)
 
 	return listener, nil
 }

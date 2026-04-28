@@ -2,6 +2,7 @@ package main
 
 import (
 	"fmt"
+	"log"
 	"net"
 	"os"
 	"sync"
@@ -13,7 +14,7 @@ func main() {
 	// Initialize the server and obtain the listener object
 	listener, err := internal.StartServer(os.Args)
 	if err != nil {
-		fmt.Println(err)
+		log.Println("Error starting server:", err)
 		return
 	}
 
@@ -23,6 +24,7 @@ func main() {
 	var key sync.Mutex
 	broadcast := make(chan string)
 
+	// Slice to hold the chat history so new clients can instantly catch up
 	var history []string
 
 	// Start the central broadcaster goroutine
@@ -33,13 +35,16 @@ func main() {
 		// A new individual connection to a single client
 		conn, err := listener.Accept()
 		if err != nil {
-			fmt.Println("Error accepting connection:", err)
+			log.Println("Error accepting connection:", err)
 			continue
 		} else {
+			log.Printf("New connection accepted from %s\n", conn.RemoteAddr().String())
 			key.Lock()
 			// Enforce the maximum connection limit (Task requirement: Max 10 connections)
 			if len(clients) >= 10 {
-				fmt.Fprintln(conn, "Server is on it's full capacity, try again later")
+				if _, err := fmt.Fprintln(conn, "Server is on it's full capacity, try again later"); err != nil {
+					log.Printf("Error writing capacity message to %s: %v\n", conn.RemoteAddr().String(), err)
+				}
 				conn.Close()
 				key.Unlock()
 				continue
@@ -56,12 +61,19 @@ func main() {
 	}
 }
 
+// broadcaster is a background goroutine that continuously listens for incoming
+// messages on the broadcast channel and distributes them to all active clients.
 func broadcaster(broadcast chan string, clients map[net.Conn]bool, key *sync.Mutex) {
 	for {
+		// Pause and wait for a new message to be sent into the channel
 		msg := <-broadcast
+		
 		key.Lock()
+		// Send the message to every connected client in the chat room
 		for receiver := range clients {
-			fmt.Fprintln(receiver, msg)
+			if _, err := fmt.Fprintln(receiver, msg); err != nil {
+				log.Printf("Error sending message to %s: %v\n", receiver.RemoteAddr().String(), err)
+			}
 		}
 		key.Unlock()
 	}
