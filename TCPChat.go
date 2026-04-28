@@ -6,12 +6,12 @@ import (
 	"os"
 	"sync"
 
-	"net-cat/handlers"
+	"net-cat/internal"
 )
 
 func main() {
 	// Initialize the server and obtain the listener object
-	listener, err := handlers.StartServer(os.Args)
+	listener, err := internal.StartServer(os.Args)
 	if err != nil {
 		fmt.Println(err)
 		return
@@ -21,6 +21,10 @@ func main() {
 	clients := make(map[net.Conn]bool)
 	// Mutex key to prevent data races when multiple goroutines access the clients map
 	var key sync.Mutex
+	broadcast := make(chan string)
+
+	// Start the central broadcaster goroutine
+	go broadcaster(broadcast, clients, &key)
 
 	// Main server loop to continuously accept incoming connections
 	for {
@@ -43,9 +47,20 @@ func main() {
 				key.Unlock()
 
 				// Start a new goroutine to handle this client concurrently so the loop isn't blocked
-				go handlers.HandleClient(conn, clients, &key)
+				go internal.HandleClient(conn, clients, &key, broadcast)
 			}
 		}
 
+	}
+}
+
+func broadcaster(broadcast chan string, clients map[net.Conn]bool, key *sync.Mutex) {
+	for {
+		msg := <-broadcast
+		key.Lock()
+		for receiver := range clients {
+			fmt.Fprintln(receiver, msg)
+		}
+		key.Unlock()
 	}
 }
