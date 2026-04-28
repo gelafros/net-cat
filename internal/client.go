@@ -111,12 +111,17 @@ func HandleClient(conn net.Conn, clients map[net.Conn]string, key *sync.Mutex, b
 	// Send the join message to the central broadcast to send to receivers
 	broadcast <- Message{Text: joinMsg, Sender: conn}
 
+	// Print the initial typing prompt for the new user
+	fmt.Fprintf(conn, "[%s][%s]:", time.Now().Format("2006-01-02 15:04:05"), name)
+
 	// Wait for new messages from this client
 	for msgscanner.Scan() {
 		// The actual msg typed by the client
 		msg := msgscanner.Text()
 		// Ignore empty lines to prevent chat spam
 		if strings.TrimSpace(msg) == "" {
+			// Redraw the prompt if they send an empty message
+			fmt.Fprintf(conn, "[%s][%s]:", time.Now().Format("2006-01-02 15:04:05"), name)
 			continue
 		}
 		// Format the message and send it to the central broadcast channel.
@@ -125,6 +130,9 @@ func HandleClient(conn net.Conn, clients map[net.Conn]string, key *sync.Mutex, b
 		*history = append(*history, formattedMsg)
 		key.Unlock()
 		broadcast <- Message{Text: formattedMsg, Sender: conn}
+
+		// Redraw the prompt for the sender after they send a message
+		fmt.Fprintf(conn, "[%s][%s]:", time.Now().Format("2006-01-02 15:04:05"), name)
 	}
 
 	// Log if the scanner stopped due to a network error instead of EOF
