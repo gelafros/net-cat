@@ -10,7 +10,7 @@ import (
 )
 
 // Handling the client(conn after listener.Accept is valid)
-func HandleClient(conn net.Conn, clients map[net.Conn]bool, key *sync.Mutex, broadcast chan string) {
+func HandleClient(conn net.Conn, clients map[net.Conn]bool, key *sync.Mutex, broadcast chan string, history *[]string) {
 	var name string
 
 	defer func() {
@@ -19,7 +19,11 @@ func HandleClient(conn net.Conn, clients map[net.Conn]bool, key *sync.Mutex, bro
 		key.Unlock()
 
 		if name != "" {
-			broadcast <- fmt.Sprintf("[%s] [%s] has left our chat...", time.Now().Format("2006-01-02 15:04:05"), name)
+			leaveMsg := fmt.Sprintf("[%s] [%s] has left our chat...", time.Now().Format("2006-01-02 15:04:05"), name)
+			key.Lock()
+			*history = append(*history, leaveMsg)
+			key.Unlock()
+			broadcast <- leaveMsg
 		}
 		conn.Close()
 	}()
@@ -42,7 +46,17 @@ func HandleClient(conn net.Conn, clients map[net.Conn]bool, key *sync.Mutex, bro
 	}
 
 	fmt.Fprintln(conn, "Welcome", name)
-	broadcast <- fmt.Sprintf("[%s] [%s] has joined our chat...", time.Now().Format("2006-01-02 15:04:05"), name)
+	key.Lock()
+	for _, historyMsg := range *history {
+		fmt.Fprintln(conn, historyMsg)
+	}
+	key.Unlock()
+
+	joinMsg := fmt.Sprintf("[%s] [%s] has joined our chat...", time.Now().Format("2006-01-02 15:04:05"), name)
+	key.Lock()
+	*history = append(*history, joinMsg)
+	key.Unlock()
+	broadcast <- joinMsg
 
 	// Continuously wait for new messages from this client
 	for msgscanner.Scan() {
@@ -53,6 +67,9 @@ func HandleClient(conn net.Conn, clients map[net.Conn]bool, key *sync.Mutex, bro
 		}
 		// Format the message and send it to the central broadcast channel.
 		formattedMsg := fmt.Sprintf("[%s][%s]:%s", time.Now().Format("2006-01-02 15:04:05"), name, msg)
+		key.Lock()
+		*history = append(*history, formattedMsg)
+		key.Unlock()
 		broadcast <- formattedMsg
 	}
 }

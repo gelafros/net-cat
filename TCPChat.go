@@ -23,6 +23,8 @@ func main() {
 	var key sync.Mutex
 	broadcast := make(chan string)
 
+	var history []string
+
 	// Start the central broadcaster goroutine
 	go broadcaster(broadcast, clients, &key)
 
@@ -47,7 +49,7 @@ func main() {
 				key.Unlock()
 
 				// Start a new goroutine to handle this client concurrently so the loop isn't blocked
-				go internal.HandleClient(conn, clients, &key, broadcast)
+				go internal.HandleClient(conn, clients, &key, broadcast, &history)
 			}
 		}
 
