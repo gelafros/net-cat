@@ -171,6 +171,7 @@ func handleWhisper(msg string, senderConn net.Conn, senderName string, clients m
 	targetChan <- fmt.Sprintf("\033[35m[%s][Whisper from %s]:\033[0m %s", timeStr, senderName, whisperMsg)
 	fmt.Fprintf(senderConn, "\033[35m[%s][Whisper to %s]:\033[0m %s\n", timeStr, targetName, whisperMsg)
 	log.Printf("EVENT: [%s] whispered to [%s]\n", senderName, targetName)
+	log.Printf("WHISPER: [%s] to [%s]: %s\n", senderName, targetName, whisperMsg)
 
 	return true
 }

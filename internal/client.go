@@ -224,8 +224,8 @@ func HandleClient(conn net.Conn, clients map[net.Conn]Client, key *sync.Mutex, b
 			continue
 		}
 
-		if isWhiper := handleWhisper(msg, conn, name, clients, key, broadcast, history); isWhiper {
-			fmt.Fprint(conn, "[%s][%s]:", time.Now().Format("2006-01-02 15:04:05"), name)
+		if isWhisper := handleWhisper(msg, conn, name, clients, key); isWhisper {
+			fmt.Fprintf(conn, "[%s][%s]:", time.Now().Format("2006-01-02 15:04:05"), name)
 			continue
 		}
 
