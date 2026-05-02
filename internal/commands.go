@@ -42,7 +42,13 @@ func handleColor(msg string, conn net.Conn, colorCode *string, name string, key 
 	}
 
 	*colorCode = newColor
-	changeMsg := fmt.Sprintf("User [%s] has changed their color to %s", name, colorInput)
+
+	var changeMsg string
+	if newColor == "\033[0m" {
+		changeMsg = fmt.Sprintf("User [%s] has reseted their color", name)
+	} else {
+		changeMsg = fmt.Sprintf("User [%s] has changed their color to %s", name, colorInput)
+	}
 
 	key.Lock()
 	*history = append(*history, changeMsg)

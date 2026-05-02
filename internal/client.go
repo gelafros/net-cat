@@ -64,9 +64,8 @@ func HandleClient(conn net.Conn, clients map[net.Conn]Client, key *sync.Mutex, b
 		conn.Close()
 	}()
 
-	// Welcome message and ASCII art logo
-	logo := "Welcome to TCP-Chat!\n" +
-		"         _nnnn_\n" +
+	// Welcome message and ASCII art logo (Original NetCat Linux "penguin")
+	logo := "         _nnnn_\n" +
 		"        dGGGGMMb\n" +
 		"       @p~qp~~qMb\n" +
 		"       M|@||@) M|\n" +
@@ -138,6 +137,49 @@ func HandleClient(conn net.Conn, clients map[net.Conn]Client, key *sync.Mutex, b
 		}
 		name = msgscanner.Text()
 	}
+
+	// Print the epic Zone01 and Devs ASCII art now that they've successfully joined
+	welcomeHeader := fmt.Sprintf("\033[1;35m"+`
+       __      __ ___  _     ___  ___  __  __  ___ 
+       \ \    / /| __|| |   / __|/ _ \|  \/  || __|
+        \ \/\/ / | _| | |__| (__| (_) | |\/| || _| 
+         \_/\_/  |___||____|\___|\___/|_|  |_||___|
+                                             
+                 TO ZONE01 NETCAT SERVER
+                       >>> %s <<<
+`+"\033[0m", name)
+
+	zone01Logo := welcomeHeader + "\033[1;36m" + `
+ ███████╗ ██████╗ ███╗   ██╗███████╗ ██████╗  ██╗
+ ╚══███╔╝██╔═══██╗████╗  ██║██╔════╝██╔═████╗███║
+   ███╔╝ ██║   ██║██╔██╗ ██║█████╗  ██║██╔██║╚██║
+  ███╔╝  ██║   ██║██║╚██╗██║██╔══╝  ████╔╝██║ ██║
+ ███████╗╚██████╔╝██║ ╚████║███████╗╚██████╔╝ ██║
+ ╚══════╝ ╚═════╝ ╚═╝  ╚═══╝╚══════╝ ╚═════╝  ╚═╝
+
+       _  _  ___  ____  ___   __   ____   /\_/\
+      ( \( )/ __)(_  _)/ __) / _\ (_  _) ( o.o )
+       )  ( \__ \  )( ( (__ /    \  )(    > ^ <
+      (_)\_)(___/ (__) \___)\_/\_/ (__)
+
+                      CREATED BY:
+
+         _  _____  _   _    _   ___ ___ ___ 
+        | |/ /_   _| \| |  /_\ | _ \_ _/ __|
+        | ' <  | | | .  | / _ \|   /| |\__ \
+        |_|\_\ |_| |_|\_|/_/ \_\_|_\___|___/
+
+        ___ ___ _      _   ___ ___  ___  ___ 
+       / __| __| |    /_\ | __| _ \/ _ \/ __|
+      | (_ | _|| |__ / _ \| _||   / (_) \__ \
+       \___|___|____/_/ \_\_| |_|_\\___/|___/
+
+         ___ ___ ___ ___ ___  ___   _   ___ 
+        |   \_ _| _ \_ _/ __| /_\ / __|
+        | |) | ||   /| || (_ |/ _ \\__ \
+        |___/___|_|_\___|\___/_/ \_\___/
+` + "\033[0m"
+	fmt.Fprintln(conn, zone01Logo)
 
 	// Let the user know how to see available commands
 	if _, err := fmt.Fprintln(conn, "Type /help for instructions"); err != nil {
