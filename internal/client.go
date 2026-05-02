@@ -71,7 +71,7 @@ func HandleClient(conn net.Conn, clients map[net.Conn]string, key *sync.Mutex, b
 	// Scanner to easily read text line-by-line from the clients conn
 	msgscanner := bufio.NewScanner(conn)
 	// Exit immediately if the client disconnects before entering anything
-	if msgscanner.Scan() == false {
+	if !msgscanner.Scan() {
 		return
 	}
 
@@ -108,7 +108,7 @@ func HandleClient(conn net.Conn, clients map[net.Conn]string, key *sync.Mutex, b
 			}
 			fmt.Fprint(conn, "[ENTER YOUR NAME]: ")
 		}
-		if msgscanner.Scan() == false {
+		if !msgscanner.Scan() {
 			return
 		}
 		name = msgscanner.Text()
@@ -168,17 +168,24 @@ func HandleClient(conn net.Conn, clients map[net.Conn]string, key *sync.Mutex, b
 				// msg = "User: " + "[" + name + "]" + " has changed their color to "
 				// broadcast <- Message{Text: msg, Sender: conn}
 				changeMsg := fmt.Sprintf("User [%s] has changed their color", name)
+				key.Lock()
 				*history = append(*history, changeMsg)
+				key.Unlock()
 				broadcast <- Message{Text: changeMsg, Sender: conn}
-				fmt.Fprintf(conn, "[%s][%s]:", time.Now().Format("2006-01-02 15:04:05"), name)
-				continue
 			}
+			fmt.Fprintf(conn, "[%s][%s]:", time.Now().Format("2006-01-02 15:04:05"), name)
+			continue
 		}
 
 		// Check if the user is trying to change their name
 		if isNameCmd := handleName(msg, conn, &name, clients, key, broadcast, history); isNameCmd {
 			fmt.Fprintf(conn, "[%s][%s]:", time.Now().Format("2006-01-02 15:04:05"), name)
 			continue
+		}
+
+		// Check if the user wants to flip a table
+		if strings.TrimSpace(msg) == "--tableflip" {
+			msg = "(╯°□°)╯︵ ┻━┻"
 		}
 
 		// Format the message and send it to the central broadcast channel.

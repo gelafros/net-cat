@@ -36,7 +36,7 @@ func StartServer(args []string) (net.Listener, error) {
 	if err != nil {
 		return nil, err
 	}
-	log.Println("Listening on the port", address)
+	log.Printf("Listening on port %s\n", port)
 
 	return listener, nil
 }
