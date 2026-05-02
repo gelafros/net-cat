@@ -6,6 +6,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"time"
 )
 
 // Checks if the user typed a color command and returns the color code
@@ -109,7 +110,8 @@ func HandleHelp(msg string, conn net.Conn) bool {
 		instructions := "Available commands:\n" +
 			"  --color=<color>  Change your message color (e.g., --color=red)\n" +
 			"  --name=<name>    Change your display name (e.g., --name=Bob)\n" +
-			"  --tableflip      Flip a table"
+			"  --tableflip      Flip a table\n" +
+			"  --whisper=<name> <msg> Send a private message (e.g., --whisper=Bob hello!)"
 		fmt.Fprintln(conn, instructions)
 		return true
 	}
@@ -122,4 +124,53 @@ func HandleTableFlip(msg string) string {
 		return "(╯°□°)╯︵ ┻━┻"
 	}
 	return msg
+}
+
+// Sends a private message directly to a specific user
+func handleWhisper(msg string, senderConn net.Conn, senderName string, clients map[net.Conn]Client, key *sync.Mutex) bool {
+	if !strings.HasPrefix(msg, "--whisper=") {
+		return false // Not a whisper command, let the client loop handle it normally
+	}
+
+	// Remove the --prefix
+	trimmed := strings.TrimPrefix(msg, "--whisper=")
+
+	// Split the remaining string into exactly 2 pieces at the very first space
+	parts := strings.SplitN(trimmed, " ", 2)
+	if len(parts) < 2 || strings.TrimSpace(parts[1]) == "" {
+		fmt.Fprintln(senderConn, "Usage: --whisper=<name> <message>")
+		return true
+	}
+
+	targetName := strings.TrimSpace(parts[0])
+	whisperMsg := strings.TrimSpace(parts[1])
+
+	if targetName == senderName {
+		fmt.Fprintln(senderConn, "You cannot whisper to yourself stupid.")
+		return true
+	}
+
+	// Search the clients map for the target user's dedicated channel
+	key.Lock()
+	var targetChan chan string
+	for _, v := range clients {
+		if v.Name == targetName {
+			targetChan = v.channel
+			break
+		}
+	}
+	key.Unlock()
+
+	if targetChan == nil {
+		fmt.Fprintf(senderConn, "User [%s] not found.\n", targetName)
+		return true
+	}
+
+	// Format the messages in Magenta to stand out, and send them!
+	timeStr := time.Now().Format("2006-01-02 15:04:05")
+	targetChan <- fmt.Sprintf("\033[35m[%s][Whisper from %s]:\033[0m %s", timeStr, senderName, whisperMsg)
+	fmt.Fprintf(senderConn, "\033[35m[%s][Whisper to %s]:\033[0m %s\n", timeStr, targetName, whisperMsg)
+	log.Printf("EVENT: [%s] whispered to [%s]\n", senderName, targetName)
+
+	return true
 }
