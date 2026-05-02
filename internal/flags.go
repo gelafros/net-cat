@@ -8,9 +8,9 @@ import (
 )
 
 // Checks if the user typed a color command and returns the color code
-func handleColor(msg string, conn net.Conn) (string, bool) {
+func handleColor(msg string, conn net.Conn, colorCode *string, name string, key *sync.Mutex, broadcast chan Message, history *[]string) bool {
 	if !strings.HasPrefix(msg, "--color") {
-		return "", false
+		return false
 	}
 
 	// Remove "--color" and "=" to get just the color name
@@ -18,25 +18,38 @@ func handleColor(msg string, conn net.Conn) (string, bool) {
 	colorInput = strings.TrimPrefix(colorInput, "=")
 	colorInput = strings.TrimSpace(colorInput)
 
+	var newColor string
 	switch strings.ToLower(colorInput) {
 	case "red":
-		return "\033[31m", true
+		newColor = "\033[31m"
 	case "green":
-		return "\033[32m", true
+		newColor = "\033[32m"
 	case "yellow":
-		return "\033[33m", true
+		newColor = "\033[33m"
 	case "blue":
-		return "\033[34m", true
+		newColor = "\033[34m"
 	case "magenta":
-		return "\033[35m", true
+		newColor = "\033[35m"
 	case "cyan":
-		return "\033[36m", true
+		newColor = "\033[36m"
 	case "reset":
-		return "\033[0m", true
+		newColor = "\033[0m"
 	default:
 		fmt.Fprintln(conn, "Unknown color. Try: red, green, yellow, blue, magenta, cyan, reset")
-		return "", true
+		return true
 	}
+
+	*colorCode = newColor
+	changeMsg := fmt.Sprintf("User [%s] has changed their color to %s", name, colorInput)
+
+	key.Lock()
+	*history = append(*history, changeMsg)
+	key.Unlock()
+
+	fmt.Fprintln(conn, changeMsg)                       // Echo to sender
+	broadcast <- Message{Text: changeMsg, Sender: conn} // Broadcast to others
+
+	return true
 }
 
 // Changes the user's name if they use the name command and the name is free

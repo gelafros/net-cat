@@ -120,7 +120,7 @@ func HandleClient(conn net.Conn, clients map[net.Conn]Client, key *sync.Mutex, b
 
 				log.Printf("Accepted connection for user: [%s]\n", name)
 				key.Unlock()
-				
+
 				// Start the background writer specifically for this client
 				go clientWriter(conn, clientChannel, &name)
 				break
@@ -186,17 +186,7 @@ func HandleClient(conn net.Conn, clients map[net.Conn]Client, key *sync.Mutex, b
 		}
 
 		// Check if the user is trying to change their color
-		if newColor, isColorCmd := handleColor(msg, conn); isColorCmd {
-			if newColor != "" {
-				colorCode = newColor
-				// msg = "User: " + "[" + name + "]" + " has changed their color to "
-				// broadcast <- Message{Text: msg, Sender: conn}
-				changeMsg := fmt.Sprintf("User [%s] has changed their color", name)
-				key.Lock()
-				*history = append(*history, changeMsg)
-				key.Unlock()
-				broadcast <- Message{Text: changeMsg, Sender: conn}
-			}
+		if isColorCmd := handleColor(msg, conn, &colorCode, name, key, broadcast, history); isColorCmd {
 			fmt.Fprintf(conn, "[%s][%s]:", time.Now().Format("2006-01-02 15:04:05"), name)
 			continue
 		}
