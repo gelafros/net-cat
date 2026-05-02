@@ -173,6 +173,12 @@ func HandleClient(conn net.Conn, clients map[net.Conn]Client, key *sync.Mutex, b
 		// The actual msg typed by the client
 		msg := msgscanner.Text()
 
+		// Filter out arrow key escape sequences sent by netcat
+		msg = strings.ReplaceAll(msg, "\033[A", "") // Up arrow
+		msg = strings.ReplaceAll(msg, "\033[B", "") // Down arrow
+		msg = strings.ReplaceAll(msg, "\033[C", "") // Right arrow
+		msg = strings.ReplaceAll(msg, "\033[D", "") // Left arrow
+
 		// Move the cursor up and erase the raw input line from their terminal
 		fmt.Fprint(conn, "\033[1A\r\033[2K")
 
