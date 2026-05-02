@@ -173,11 +173,28 @@ func HandleClient(conn net.Conn, clients map[net.Conn]Client, key *sync.Mutex, b
 		// The actual msg typed by the client
 		msg := msgscanner.Text()
 
-		// Filter out arrow key escape sequences sent by netcat
-		msg = strings.ReplaceAll(msg, "\033[A", "") // Up arrow
-		msg = strings.ReplaceAll(msg, "\033[B", "") // Down arrow
-		msg = strings.ReplaceAll(msg, "\033[C", "") // Right arrow
-		msg = strings.ReplaceAll(msg, "\033[D", "") // Left arrow
+		// Robustly filter out all ANSI escape sequences and control characters
+		var cleanInput strings.Builder
+		inEscape := false
+		for _, r := range msg {
+			if r == '\033' { // Escape character detected
+				inEscape = true
+				continue
+			}
+			if inEscape {
+				// ANSI sequences typically end with a letter or a tilde
+				if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || r == '~' {
+					inEscape = false
+				}
+				continue
+			}
+			// Ignore backspace and delete characters so they don't break formatting
+			if r == '\b' || r == '\x7f' {
+				continue
+			}
+			cleanInput.WriteRune(r)
+		}
+		msg = cleanInput.String()
 
 		// Move the cursor up and erase the raw input line from their terminal
 		fmt.Fprint(conn, "\033[1A\r\033[2K")
@@ -221,7 +238,9 @@ func HandleClient(conn net.Conn, clients map[net.Conn]Client, key *sync.Mutex, b
 		*history = append(*history, formattedMsg)
 		key.Unlock()
 		broadcast <- Message{Text: formattedMsg, Sender: conn}
-		log.Println("CHAT:", cleanMsg) // Save clean chat message to file without color codes
+
+		// Save to file without color codes AND without the duplicate timestamp
+		log.Printf("CHAT: [%s]:%s\n", name, msg)
 
 		// Redraw the prompt for the sender after they send a message
 		fmt.Fprintf(conn, "[%s][%s]:", time.Now().Format("2006-01-02 15:04:05"), name)
