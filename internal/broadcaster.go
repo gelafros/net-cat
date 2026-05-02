@@ -16,8 +16,13 @@ func Broadcaster(broadcast chan Message, clients map[net.Conn]Client, key *sync.
 		for receiver, clientInfo := range clients {
 			// Only send to clients who have joined (have a name) and aren't the sender
 			if receiver != msg.Sender && clientInfo.Name != "" {
-				// Instantly send message to the channel in memory; no network blocking!
-				clientInfo.channel <- msg.Text
+				// Non-blocking send! If their mailbox is full (slow network), we skip them
+				select {
+				case clientInfo.channel <- msg.Text:
+					// Message delivered to client's buffer successfully
+				default:
+					// Client is too slow and buffer is full! Dropping message to keep server alive.
+				}
 			}
 		}
 		key.Unlock()

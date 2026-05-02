@@ -115,7 +115,7 @@ func HandleClient(conn net.Conn, clients map[net.Conn]Client, key *sync.Mutex, b
 			}
 			if !isTaken {
 				// Initialize the struct and its dedicated channel
-				clientChannel := make(chan string)
+				clientChannel := make(chan string, 100) // Give them a mailbox that holds up to 100 unread messages
 				clients[conn] = Client{Name: name, channel: clientChannel}
 
 				log.Printf("Accepted connection for user: [%s]\n", name)
