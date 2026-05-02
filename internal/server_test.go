@@ -4,6 +4,7 @@ import (
 	"testing"
 )
 
+// Tests the getPort function with different command-line arguments
 func TestGetPort(t *testing.T) {
 	tests := []struct {
 		name          string

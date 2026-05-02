@@ -99,3 +99,25 @@ func handleName(msg string, conn net.Conn, name *string, clients map[net.Conn]Cl
 
 	return true
 }
+
+// Checks if the user requested the help menu
+func HandleHelp(msg string, conn net.Conn) bool {
+	if strings.TrimSpace(msg) == "/help" {
+		instructions := "Available commands:\n" +
+			"  --color=<color>  Change your message color (e.g., --color=red)\n" +
+			"  --name=<name>    Change your display name (e.g., --name=Bob)\n" +
+			"  --tableflip      Flip a table\n" +
+			"  /help            Show this help menu"
+		fmt.Fprintln(conn, instructions)
+		return true
+	}
+	return false
+}
+
+// Transforms the tableflip command into the ASCII art
+func HandleTableFlip(msg string) string {
+	if strings.TrimSpace(msg) == "--tableflip" {
+		return "(╯°□°)╯︵ ┻━┻"
+	}
+	return msg
+}

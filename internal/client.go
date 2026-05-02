@@ -10,11 +10,13 @@ import (
 	"time"
 )
 
+// Message struct to hold the message text and identify the sender
 type Message struct {
 	Text   string
 	Sender net.Conn
 }
 
+// Client struct to hold the users name and their dedicated message channel
 type Client struct {
 	Name    string
 	channel chan string
@@ -138,12 +140,8 @@ func HandleClient(conn net.Conn, clients map[net.Conn]Client, key *sync.Mutex, b
 		name = msgscanner.Text()
 	}
 
-	// Show the available commands to the user
-	instructions := "Available commands:\n" +
-		"  --color=<color>  Change your message color (e.g., --color=red)\n" +
-		"  --name=<name>    Change your display name (e.g., --name=Bob)\n" +
-		"  --tableflip      Flip a table\n"
-	if _, err := fmt.Fprintln(conn, instructions); err != nil {
+	// Let the user know how to see available commands
+	if _, err := fmt.Fprintln(conn, "Type /help for instructions"); err != nil {
 		log.Printf("Write error to %s: %v\n", addr, err)
 		return
 	}
@@ -185,6 +183,12 @@ func HandleClient(conn net.Conn, clients map[net.Conn]Client, key *sync.Mutex, b
 			continue
 		}
 
+		// Check if the user wants to see the help menu
+		if isHelpCmd := HandleHelp(msg, conn); isHelpCmd {
+			fmt.Fprintf(conn, "[%s][%s]:", time.Now().Format("2006-01-02 15:04:05"), name)
+			continue
+		}
+
 		// Check if the user is trying to change their color
 		if isColorCmd := handleColor(msg, conn, &colorCode, name, key, broadcast, history); isColorCmd {
 			fmt.Fprintf(conn, "[%s][%s]:", time.Now().Format("2006-01-02 15:04:05"), name)
@@ -198,9 +202,7 @@ func HandleClient(conn net.Conn, clients map[net.Conn]Client, key *sync.Mutex, b
 		}
 
 		// Check if the user wants to flip a table
-		if strings.TrimSpace(msg) == "--tableflip" {
-			msg = "(╯°□°)╯︵ ┻━┻"
-		}
+		msg = HandleTableFlip(msg)
 
 		// Format the message and send it to the central broadcast channel.
 		formattedMsg := fmt.Sprintf("%s[%s][%s]:%s\033[0m", colorCode, time.Now().Format("2006-01-02 15:04:05"), name, msg)
