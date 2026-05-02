@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"io"
 	"log"
 	"net"
 	"os"
@@ -12,15 +11,9 @@ import (
 )
 
 func main() {
-	// Open a file to store all the server and chat logs
-	logFile, err := os.OpenFile("server_logs.txt", os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o666)
-	if err != nil {
-		log.Fatal("Error opening log file: ", err)
-	}
+	// Setup logging to both the terminal and the log file
+	logFile := internal.SetupLogging()
 	defer logFile.Close()
-
-	// Use io.MultiWriter to write logs to BOTH the terminal and the file
-	log.SetOutput(io.MultiWriter(os.Stdout, logFile))
 
 	// Initialize the server and obtain the listener object
 	listener, err := internal.StartServer(os.Args)
