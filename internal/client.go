@@ -15,8 +15,22 @@ type Message struct {
 	Sender net.Conn
 }
 
+type Client struct {
+	Name    string
+	channel chan string
+}
+
+// Background writer goroutine dedicated to a single client
+func clientWriter(conn net.Conn, ch chan string, name *string) {
+	for msg := range ch {
+		// Clear line, print the message, and reprint the prompt
+		fmt.Fprintln(conn, "\r\033[2K"+msg)
+		fmt.Fprintf(conn, "[%s][%s]:", time.Now().Format("2006-01-02 15:04:05"), *name)
+	}
+}
+
 // Handles conns,names,chat history,and broadcasts names
-func HandleClient(conn net.Conn, clients map[net.Conn]string, key *sync.Mutex, broadcast chan Message, history *[]string) {
+func HandleClient(conn net.Conn, clients map[net.Conn]Client, key *sync.Mutex, broadcast chan Message, history *[]string) {
 	var name string
 
 	// Default color is standard terminal color (ANSI reset code)
@@ -28,6 +42,10 @@ func HandleClient(conn net.Conn, clients map[net.Conn]string, key *sync.Mutex, b
 	defer func() {
 		// Waits until the whole func is run and safely removes the client from the clients map
 		key.Lock()
+		if clientStruct, ok := clients[conn]; ok && clientStruct.channel != nil {
+			// Close the channel so the clientWriter goroutine stops cleanly
+			close(clientStruct.channel)
+		}
 		delete(clients, conn)
 		key.Unlock()
 
@@ -89,16 +107,22 @@ func HandleClient(conn net.Conn, clients map[net.Conn]string, key *sync.Mutex, b
 			// Safely check if the name is already used
 			key.Lock()
 			isTaken := false
-			for _, existingName := range clients {
-				if existingName == name {
+			for _, existingClient := range clients {
+				if existingClient.Name == name {
 					isTaken = true
 					break
 				}
 			}
 			if !isTaken {
-				clients[conn] = name // Claim the name while still locked
+				// Initialize the struct and its dedicated channel
+				clientChannel := make(chan string)
+				clients[conn] = Client{Name: name, channel: clientChannel}
+
 				log.Printf("Accepted connection for user: [%s]\n", name)
 				key.Unlock()
+				
+				// Start the background writer specifically for this client
+				go clientWriter(conn, clientChannel, &name)
 				break
 			}
 			key.Unlock()

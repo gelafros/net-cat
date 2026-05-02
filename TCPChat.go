@@ -19,7 +19,7 @@ func main() {
 	}
 
 	// Map to keep track of all currently connected clients
-	clients := make(map[net.Conn]string)
+	clients := make(map[net.Conn]internal.Client)
 	// Mutex key to prevent data races when multiple goroutines access the clients map
 	var key sync.Mutex
 
@@ -51,7 +51,7 @@ func main() {
 				continue
 			} else {
 				// Add the new client to the active clients map
-				clients[conn] = ""
+				clients[conn] = internal.Client{}
 				key.Unlock()
 
 				// Start a new goroutine to handle this client concurrently so the loop isn't blocked
