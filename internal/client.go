@@ -53,14 +53,14 @@ func HandleClient(conn net.Conn, clients map[net.Conn]Client, key *sync.Mutex, b
 
 		// If the user successfully joined
 		if name != "" {
-			leaveMsg := fmt.Sprintf("%s has left our chat...", name)
+			leaveMsg := fmt.Sprintf("User [%s] has left our chat...", name)
 			key.Lock()
 			*history = append(*history, leaveMsg)
 			key.Unlock()
 			broadcast <- Message{Text: leaveMsg, Sender: conn}
+			log.Println("EVENT:", leaveMsg) // Save leave event to file
 		}
 		// log.Printf("Client disconnected: %s\n", addr)
-		log.Printf("User [%s] disconnected \n", name)
 		conn.Close()
 	}()
 
@@ -120,7 +120,6 @@ func HandleClient(conn net.Conn, clients map[net.Conn]Client, key *sync.Mutex, b
 				clientChannel := make(chan string, 100) // Give them a mailbox that holds up to 100 unread messages
 				clients[conn] = Client{Name: name, channel: clientChannel}
 
-				log.Printf("Accepted connection for user: [%s]\n", name)
 				key.Unlock()
 
 				// Start the background writer specifically for this client
@@ -157,10 +156,11 @@ func HandleClient(conn net.Conn, clients map[net.Conn]Client, key *sync.Mutex, b
 	key.Unlock()
 
 	// Announce the new client to the rest of the chat room
-	joinMsg := fmt.Sprintf("%s has joined our chat...", name)
+	joinMsg := fmt.Sprintf("User [%s] has joined our chat...", name)
 	key.Lock()
 	*history = append(*history, joinMsg)
 	key.Unlock()
+	log.Println("EVENT:", joinMsg) // Save join event to file
 
 	// Send the join message to the central broadcast to send to receivers
 	broadcast <- Message{Text: joinMsg, Sender: conn}
@@ -204,8 +204,9 @@ func HandleClient(conn net.Conn, clients map[net.Conn]Client, key *sync.Mutex, b
 		// Check if the user wants to flip a table
 		msg = HandleTableFlip(msg)
 
-		// Format the message and send it to the central broadcast channel.
-		formattedMsg := fmt.Sprintf("%s[%s][%s]:%s\033[0m", colorCode, time.Now().Format("2006-01-02 15:04:05"), name, msg)
+		// Format AND CLEAN the message and send it to the central broadcast channel.
+		cleanMsg := fmt.Sprintf("[%s][%s]:%s", time.Now().Format("2006-01-02 15:04:05"), name, msg)
+		formattedMsg := fmt.Sprintf("%s%s\033[0m", colorCode, cleanMsg)
 
 		// Echo the fully formatted and colored message back to the sender!
 		fmt.Fprintln(conn, formattedMsg)
@@ -214,6 +215,7 @@ func HandleClient(conn net.Conn, clients map[net.Conn]Client, key *sync.Mutex, b
 		*history = append(*history, formattedMsg)
 		key.Unlock()
 		broadcast <- Message{Text: formattedMsg, Sender: conn}
+		log.Println("CHAT:", cleanMsg) // Save clean chat message to file without color codes
 
 		// Redraw the prompt for the sender after they send a message
 		fmt.Fprintf(conn, "[%s][%s]:", time.Now().Format("2006-01-02 15:04:05"), name)

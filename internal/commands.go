@@ -2,6 +2,7 @@ package internal
 
 import (
 	"fmt"
+	"log"
 	"net"
 	"strings"
 	"sync"
@@ -48,6 +49,7 @@ func handleColor(msg string, conn net.Conn, colorCode *string, name string, key 
 
 	fmt.Fprintln(conn, changeMsg)                       // Echo to sender
 	broadcast <- Message{Text: changeMsg, Sender: conn} // Broadcast to others
+	log.Println("EVENT:", changeMsg)                    // Save color change to file
 
 	return true
 }
@@ -96,6 +98,7 @@ func handleName(msg string, conn net.Conn, name *string, clients map[net.Conn]Cl
 
 	fmt.Fprintln(conn, changeMsg)                       // Echo to sender
 	broadcast <- Message{Text: changeMsg, Sender: conn} // Broadcast to others
+	log.Println("EVENT:", changeMsg)                    // Save name change to file
 
 	return true
 }
@@ -106,8 +109,7 @@ func HandleHelp(msg string, conn net.Conn) bool {
 		instructions := "Available commands:\n" +
 			"  --color=<color>  Change your message color (e.g., --color=red)\n" +
 			"  --name=<name>    Change your display name (e.g., --name=Bob)\n" +
-			"  --tableflip      Flip a table\n" +
-			"  /help            Show this help menu"
+			"  --tableflip      Flip a table"
 		fmt.Fprintln(conn, instructions)
 		return true
 	}
