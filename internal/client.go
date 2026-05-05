@@ -23,11 +23,11 @@ type Client struct {
 }
 
 // Background writer goroutine dedicated to a single client
-func clientWriter(conn net.Conn, ch chan string, name *string) {
+func clientWriter(conn net.Conn, ch chan string, name *string, colorCode *string) {
 	for msg := range ch {
 		// Clear line, print the message, and reprint the prompt
 		fmt.Fprintln(conn, "\r\033[2K"+msg)
-		fmt.Fprintf(conn, "[%s][%s]:", time.Now().Format("2006-01-02 15:04:05"), *name)
+		fmt.Fprintf(conn, "%s[%s][%s]:\033[0m", *colorCode, time.Now().Format("2006-01-02 15:04:05"), *name)
 	}
 }
 
@@ -122,7 +122,7 @@ func HandleClient(conn net.Conn, clients map[net.Conn]Client, key *sync.Mutex, b
 				key.Unlock()
 
 				// Start the background writer specifically for this client
-				go clientWriter(conn, clientChannel, &name)
+				go clientWriter(conn, clientChannel, &name, &colorCode)
 				break
 			}
 			key.Unlock()
@@ -208,7 +208,7 @@ func HandleClient(conn net.Conn, clients map[net.Conn]Client, key *sync.Mutex, b
 	broadcast <- Message{Text: joinMsg, Sender: conn}
 
 	// Print the initial typing prompt for the new user
-	fmt.Fprintf(conn, "[%s][%s]:", time.Now().Format("2006-01-02 15:04:05"), name)
+	fmt.Fprintf(conn, "%s[%s][%s]:\033[0m", colorCode, time.Now().Format("2006-01-02 15:04:05"), name)
 
 	// Wait for new messages from this client
 	for msgscanner.Scan() {
@@ -244,30 +244,30 @@ func HandleClient(conn net.Conn, clients map[net.Conn]Client, key *sync.Mutex, b
 		// Ignore empty lines to prevent chat spam
 		if strings.TrimSpace(msg) == "" {
 			// Redraw the prompt if they send an empty message
-			fmt.Fprintf(conn, "[%s][%s]:", time.Now().Format("2006-01-02 15:04:05"), name)
+			fmt.Fprintf(conn, "%s[%s][%s]:\033[0m", colorCode, time.Now().Format("2006-01-02 15:04:05"), name)
 			continue
 		}
 
 		// Check if the user wants to see the help menu
 		if isHelpCmd := HandleHelp(msg, conn); isHelpCmd {
-			fmt.Fprintf(conn, "[%s][%s]:", time.Now().Format("2006-01-02 15:04:05"), name)
+			fmt.Fprintf(conn, "%s[%s][%s]:\033[0m", colorCode, time.Now().Format("2006-01-02 15:04:05"), name)
 			continue
 		}
 
 		// Check if the user is trying to change their color
 		if isColorCmd := handleColor(msg, conn, &colorCode, name, key, broadcast, history); isColorCmd {
-			fmt.Fprintf(conn, "[%s][%s]:", time.Now().Format("2006-01-02 15:04:05"), name)
+			fmt.Fprintf(conn, "%s[%s][%s]:\033[0m", colorCode, time.Now().Format("2006-01-02 15:04:05"), name)
 			continue
 		}
 
 		// Check if the user is trying to change their name
 		if isNameCmd := handleName(msg, conn, &name, clients, key, broadcast, history); isNameCmd {
-			fmt.Fprintf(conn, "[%s][%s]:", time.Now().Format("2006-01-02 15:04:05"), name)
+			fmt.Fprintf(conn, "%s[%s][%s]:\033[0m", colorCode, time.Now().Format("2006-01-02 15:04:05"), name)
 			continue
 		}
 
 		if isWhisper := handleWhisper(msg, conn, name, clients, key); isWhisper {
-			fmt.Fprintf(conn, "[%s][%s]:", time.Now().Format("2006-01-02 15:04:05"), name)
+			fmt.Fprintf(conn, "%s[%s][%s]:\033[0m", colorCode, time.Now().Format("2006-01-02 15:04:05"), name)
 			continue
 		}
 
@@ -290,7 +290,7 @@ func HandleClient(conn net.Conn, clients map[net.Conn]Client, key *sync.Mutex, b
 		log.Printf("CHAT: [%s]:%s\n", name, msg)
 
 		// Redraw the prompt for the sender after they send a message
-		fmt.Fprintf(conn, "[%s][%s]:", time.Now().Format("2006-01-02 15:04:05"), name)
+		fmt.Fprintf(conn, "%s[%s][%s]:\033[0m", colorCode, time.Now().Format("2006-01-02 15:04:05"), name)
 	}
 
 	// Log if the scanner stopped due to a network error instead of EOF
