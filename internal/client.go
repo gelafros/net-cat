@@ -25,6 +25,9 @@ type Client struct {
 // Background writer goroutine dedicated to a single client
 func clientWriter(conn net.Conn, ch chan string) {
 	for msg := range ch {
+		if !strings.HasSuffix(msg, "\n") {
+			msg += "\n"
+		}
 		// Insert the message ABOVE the user's input line so their typing is preserved
 		fmt.Fprintf(conn, "\033[s\r\033[L%s\033[u\033[1B", msg)
 	}
@@ -98,11 +101,10 @@ func HandleClient(conn net.Conn, clients map[net.Conn]Client, key *sync.Mutex, b
 	// Keep looping until a valid and unique name is provided
 	for {
 		if name == "" {
-			if _, err := fmt.Fprintln(conn, "Invalid name, try again stupid"); err != nil {
+			if _, err := fmt.Fprint(conn, "\nInvalid name, try again\n[ENTER YOUR NAME]: "); err != nil {
 				log.Printf("Write error to %s: %v\n", addr, err)
 				return
 			}
-			fmt.Fprint(conn, "[ENTER YOUR NAME]: ")
 		} else {
 			// Safely check if the name is already used
 			key.Lock()
@@ -125,11 +127,10 @@ func HandleClient(conn net.Conn, clients map[net.Conn]Client, key *sync.Mutex, b
 				break
 			}
 			key.Unlock()
-			if _, err := fmt.Fprintln(conn, "Name already taken, try another"); err != nil {
+			if _, err := fmt.Fprint(conn, "\nName already taken, try another\n[ENTER YOUR NAME]: "); err != nil {
 				log.Printf("Write error to %s: %v\n", addr, err)
 				return
 			}
-			fmt.Fprint(conn, "[ENTER YOUR NAME]: ")
 		}
 		if !msgscanner.Scan() {
 			return
@@ -180,12 +181,6 @@ func HandleClient(conn net.Conn, clients map[net.Conn]Client, key *sync.Mutex, b
 ` + "\033[0m"
 	fmt.Fprintln(conn, zone01Logo)
 
-	// Let the user know how to see available commands
-	if _, err := fmt.Fprintln(conn, "Type /help for instructions"); err != nil {
-		log.Printf("Write error to %s: %v\n", addr, err)
-		return
-	}
-
 	// Print the past chat history for the new user
 	key.Lock()
 	for _, historyMsg := range *history {
@@ -196,6 +191,12 @@ func HandleClient(conn net.Conn, clients map[net.Conn]Client, key *sync.Mutex, b
 	}
 	key.Unlock()
 
+	// Let the user know how to see available commands
+	if _, err := fmt.Fprint(conn, "Type /help for instructions\n\n"); err != nil {
+		log.Printf("Write error to %s: %v\n", addr, err)
+		return
+	}
+
 	// Announce the new client to the rest of the chat room
 	joinMsg := fmt.Sprintf("User [%s] has joined our chat...", name)
 	key.Lock()
@@ -205,9 +206,6 @@ func HandleClient(conn net.Conn, clients map[net.Conn]Client, key *sync.Mutex, b
 
 	// Send the join message to the central broadcast to send to receivers
 	broadcast <- Message{Text: joinMsg, Sender: conn}
-
-	// Print the initial typing prompt for the new user
-	fmt.Fprintf(conn, "%s[%s][%s]:\033[0m", colorCode, time.Now().Format("2006-01-02 15:04:05"), name)
 
 	// Wait for new messages from this client
 	for msgscanner.Scan() {

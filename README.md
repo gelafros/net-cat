@@ -47,3 +47,27 @@ nc localhost 8989
 ```
 
 Once connected, you will be prompted to enter a name. After providing a unique name, you can start sending messages to the chat room.
+
+## Terminal UI Client
+
+The project also includes a Go terminal UI client built with `gocui`.
+
+Start the server in one terminal:
+
+```sh
+go run .
+```
+
+Then start the UI client in another terminal:
+
+```sh
+go run ./cmd/client
+```
+
+To connect to a custom server address:
+
+```sh
+go run ./cmd/client -addr localhost:9000
+```
+
+Inside the UI, type your chat name first, press Enter, and then use the message box to chat. On wider terminals, the right side shows the current users inferred from server join/leave/name-change messages. Server colors from `--color=<color>` are preserved in the chat panel. Use `PageUp`, `PageDown`, or the mouse wheel to scroll through chat history, `Home` to jump to the top, and `End` to follow the latest messages again. Use `Up` and `Down` in the input box to recall messages you already sent. Press `Ctrl+C` to quit.

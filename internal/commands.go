@@ -117,7 +117,11 @@ func HandleHelp(msg string, conn net.Conn) bool {
 			"  --color=<color>  Change your message color (e.g., --color=red)\n" +
 			"  --name=<name>    Change your display name (e.g., --name=Bob)\n" +
 			"  --tableflip      Flip a table\n" +
-			"  --whisper=<name> <msg> Send a private message (e.g., --whisper=Bob hello!)"
+			"  --whisper=<name> <msg> Send a private message (e.g., --whisper=Bob hello!)\n" +
+			"UI scrolling:\n" +
+			"  PageUp/PageDown or mouse wheel scroll chat history\n" +
+			"  Home jumps to the top, End follows the latest messages\n" +
+			"  Up/Down recalls your previous sent messages in the UI input"
 		fmt.Fprintln(conn, instructions)
 		return true
 	}
