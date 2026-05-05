@@ -54,9 +54,9 @@ func handleColor(msg string, conn net.Conn, colorCode *string, name string, key 
 	*history = append(*history, changeMsg)
 	key.Unlock()
 
-	fmt.Fprintln(conn, changeMsg)                       // Echo to sender
-	broadcast <- Message{Text: changeMsg, Sender: conn} // Broadcast to others
-	log.Println("EVENT:", changeMsg)                    // Save color change to file
+	fmt.Fprintf(conn, "You changed your color to [%s]\n", colorInput) // Echo to sender
+	broadcast <- Message{Text: changeMsg, Sender: conn}               // Broadcast to others
+	log.Println("EVENT:", changeMsg)                                  // Save color change to file
 
 	return true
 }
