@@ -23,10 +23,11 @@ type Client struct {
 }
 
 // Background writer goroutine dedicated to a single client
-func clientWriter(conn net.Conn, ch chan string) {
+func clientWriter(conn net.Conn, ch chan string, name *string, colorCode *string) {
 	for msg := range ch {
-		// Insert the message ABOVE the user's input line so their typing is preserved
-		fmt.Fprintf(conn, "\033[s\r\033[L%s\033[u\033[1B", msg)
+		// Clear current line, print incoming message, then redraw the prompt
+		fmt.Fprintln(conn, "\r\033[2K"+msg)
+		fmt.Fprintf(conn, "%s[%s][%s]:\033[0m", *colorCode, time.Now().Format("2006-01-02 15:04:05"), *name)
 	}
 }
 
@@ -121,7 +122,7 @@ func HandleClient(conn net.Conn, clients map[net.Conn]Client, key *sync.Mutex, b
 				key.Unlock()
 
 				// Start the background writer specifically for this client
-				go clientWriter(conn, clientChannel)
+				go clientWriter(conn, clientChannel, &name, &colorCode)
 				break
 			}
 			key.Unlock()
