@@ -1,7 +1,6 @@
-package main
+package client
 
 import (
-	"flag"
 	"fmt"
 	"net"
 	"os"
@@ -21,6 +20,7 @@ const (
 	viewClientName   = "client-name"
 	viewStatus       = "status"
 	viewUsers        = "users"
+	viewRooms        = "rooms"
 	viewMouseCapture = "mouse-capture"
 )
 
@@ -35,6 +35,8 @@ type app struct {
 	inputHistory []string
 	historyIndex int
 	users        map[string]bool
+	currentRoom  string
+	rooms        []string
 }
 
 var (
@@ -43,19 +45,16 @@ var (
 	renamePattern       = regexp.MustCompile(`\[([^\]]+)\] changed their name to \[([^\]]+)\]`)
 	welcomeNamePattern  = regexp.MustCompile(`>>>\s*([^<]+?)\s*<<<`)
 	serverPromptPattern = regexp.MustCompile(`(?:\x1b\[[0-9;]*m)*\[\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}\]\[[^\]\n]+\]:(?:\x1b\[[0-9;]*m)*(?:\n|$)`)
+	joinedRoomPattern   = regexp.MustCompile(`---\s*Joined Room:\s*(.+?)\s*---`)
+	returnedMainPattern = regexp.MustCompile(`---\s*Returned to Main\s*---`)
+	availableRoomLine   = regexp.MustCompile(`(?m)^-\s*(.+?\(\d+\s*users\))$`)
+	roomsBlockPattern   = regexp.MustCompile(`(?m)^Available rooms:\s*\n(?:-\s*.+?\(\d+\s*users\)\s*\n?)*`)
 )
 
-func main() {
-	addr := flag.String("addr", "localhost:8989", "server address")
-	flag.Parse()
-
-	if flag.NArg() > 0 {
-		*addr = flag.Arg(0)
-	}
-
-	conn, err := net.Dial("tcp", *addr)
+func Run(addr string) {
+	conn, err := net.Dial("tcp", addr)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "connect to %s: %v\n", *addr, err)
+		fmt.Fprintf(os.Stderr, "connect to %s: %v\n", addr, err)
 		os.Exit(1)
 	}
 	defer conn.Close()
@@ -70,10 +69,11 @@ func main() {
 	a := &app{
 		gui:          g,
 		conn:         conn,
-		addr:         *addr,
+		addr:         addr,
 		follow:       true,
 		historyIndex: -1,
 		users:        make(map[string]bool),
+		currentRoom:  "Main",
 	}
 
 	g.Cursor = true
@@ -109,17 +109,41 @@ func (a *app) layout(g *gocui.Gui) error {
 		}
 	}
 
+	roomsWidth := 0
+	if maxX >= 80 {
+		roomsWidth = 20
+	}
 	usersWidth := 0
 	if maxX >= 60 {
 		usersWidth = 22
 	}
+	messagesLeft := 0
+	if roomsWidth > 0 {
+		messagesLeft = roomsWidth + 1
+	}
 	messagesRight := maxX - usersWidth - 1
 
-	if v, err := g.SetView(viewMessages, 0, 0, messagesRight, maxY-7); err != nil {
+	if roomsWidth > 0 {
+		if v, err := g.SetView(viewRooms, 0, 0, roomsWidth, maxY-7); err != nil {
+			if err != gocui.ErrUnknownView {
+				return err
+			}
+			v.Title = " Rooms "
+			v.Wrap = true
+		}
+		a.renderRooms()
+	} else {
+		g.DeleteView(viewRooms)
+	}
+
+	if v, err := g.SetView(viewMessages, messagesLeft, 0, messagesRight, maxY-7); err != nil {
 		if err != gocui.ErrUnknownView {
 			return err
 		}
 		v.Title = " Net-Cat "
+		if a.currentRoom != "" {
+			v.Title = fmt.Sprintf(" Room: %s ", a.currentRoom)
+		}
 		v.Wrap = true
 		v.Autoscroll = true
 		fmt.Fprintln(v, "Connected to "+a.addr)
@@ -135,6 +159,8 @@ func (a *app) layout(g *gocui.Gui) error {
 			v.Wrap = true
 		}
 		a.renderUsers()
+	} else {
+		g.DeleteView(viewUsers)
 	}
 
 	if v, err := g.SetView(viewClientName, 0, maxY-6, maxX-1, maxY-4); err != nil {
@@ -193,7 +219,7 @@ func (a *app) bindKeys() error {
 	if err := a.gui.SetKeybinding("", gocui.KeyEnd, gocui.ModNone, a.scrollMessagesBottom); err != nil {
 		return err
 	}
-	for _, viewName := range []string{viewMessages, viewInput, viewClientName, viewUsers, viewMouseCapture} {
+	for _, viewName := range []string{viewMessages, viewInput, viewClientName, viewUsers, viewRooms, viewMouseCapture} {
 		if err := a.gui.SetKeybinding(viewName, gocui.MouseWheelUp, gocui.ModNone, a.scrollMessagesWheelUp); err != nil {
 			return err
 		}
@@ -259,6 +285,12 @@ func (a *app) nextInput(g *gocui.Gui, v *gocui.View) error {
 func (a *app) rememberInput(text string) {
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	if text == "/rooms" || strings.HasPrefix(text, "/join") || strings.HasPrefix(text, "/create") || text == "/leave" {
+		go func() {
+			time.Sleep(200 * time.Millisecond)
+			fmt.Fprintln(a.conn, "/rooms")
+		}()
+	}
 	if len(a.inputHistory) == 0 || a.inputHistory[len(a.inputHistory)-1] != text {
 		a.inputHistory = append(a.inputHistory, text)
 	}
@@ -274,6 +306,7 @@ func (a *app) readServer() {
 			if text != "" {
 				a.gui.Update(func(g *gocui.Gui) error {
 					a.updateUsers(text)
+					a.updateRoomsAndTitle(text)
 					displayText := removeServerPrompts(text)
 					if displayText == "" {
 						return nil
@@ -424,6 +457,10 @@ func (a *app) updateUsers(text string) {
 		if name != "" {
 			a.name = name
 			a.users[name] = true
+			go func() {
+				time.Sleep(500 * time.Millisecond)
+				fmt.Fprintln(a.conn, "/rooms")
+			}()
 		}
 	}
 	for _, match := range renamePattern.FindAllStringSubmatch(plain, -1) {
@@ -443,6 +480,43 @@ func (a *app) updateUsers(text string) {
 
 	a.renderUsersLocked()
 	a.renderClientNameLocked()
+}
+
+func (a *app) updateRoomsAndTitle(text string) {
+	plain := stripANSI(text)
+
+	a.mu.Lock()
+	defer a.mu.Unlock()
+
+	joinedMatches := joinedRoomPattern.FindAllStringSubmatch(plain, -1)
+	if len(joinedMatches) > 0 {
+		a.currentRoom = strings.TrimSpace(joinedMatches[len(joinedMatches)-1][1])
+	} else if returnedMainPattern.MatchString(plain) {
+		a.currentRoom = "Main"
+	}
+
+	roomLines := availableRoomLine.FindAllStringSubmatch(plain, -1)
+	if len(roomLines) > 0 {
+		a.rooms = nil
+		for _, m := range roomLines {
+			a.rooms = append(a.rooms, strings.TrimSpace(m[1]))
+		}
+	}
+
+	a.renderRoomsLocked()
+	a.updateChatTitleLocked()
+}
+
+func (a *app) updateChatTitleLocked() {
+	v, err := a.gui.View(viewMessages)
+	if err != nil {
+		return
+	}
+	if a.currentRoom == "" {
+		v.Title = " Net-Cat "
+	} else {
+		v.Title = fmt.Sprintf(" Room: %s ", a.currentRoom)
+	}
 }
 
 func (a *app) clientNameLabelLocked() string {
@@ -497,6 +571,27 @@ func (a *app) renderUsersLocked() {
 
 	for _, name := range names {
 		fmt.Fprintln(v, name)
+	}
+}
+
+func (a *app) renderRooms() {
+	a.mu.Lock()
+	defer a.mu.Unlock()
+	a.renderRoomsLocked()
+}
+
+func (a *app) renderRoomsLocked() {
+	v, err := a.gui.View(viewRooms)
+	if err != nil {
+		return
+	}
+	v.Clear()
+	if len(a.rooms) == 0 {
+		fmt.Fprintln(v, "Waiting...")
+		return
+	}
+	for _, r := range a.rooms {
+		fmt.Fprintln(v, r)
 	}
 }
 
@@ -558,7 +653,9 @@ func cleanTerminalText(s string) string {
 }
 
 func removeServerPrompts(s string) string {
-	return serverPromptPattern.ReplaceAllString(s, "")
+	s = serverPromptPattern.ReplaceAllString(s, "")
+	s = roomsBlockPattern.ReplaceAllString(s, "")
+	return s
 }
 
 func replaceInput(v *gocui.View, text string) error {

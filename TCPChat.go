@@ -2,15 +2,47 @@ package main
 
 import (
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
-	"sync"
+	"strings"
 
+	"net-cat/cmd/client"
 	"net-cat/internal"
 )
 
 func main() {
+	isUI := false
+	isClient := false
+	host := "localhost"
+	port := "8989"
+
+	// Parse arguments to determine the execution mode
+	for _, arg := range os.Args[1:] {
+		if arg == "-ui" {
+			isUI = true
+			isClient = true
+		} else if arg == "localhost" || strings.Contains(arg, ".") {
+			host = arg
+			isClient = true
+		} else {
+			port = arg
+		}
+	}
+
+	// Mode 1: UI Client
+	if isUI && isClient {
+		client.Run(host + ":" + port)
+		return
+	}
+
+	// Mode 2: Standard CLI Client (Mimicking system 'nc')
+	if !isUI && isClient {
+		runCLIClient(host + ":" + port)
+		return
+	}
+
 	// Setup logging to both the terminal and the log file
 	logFile := internal.SetupLogging()
 	defer logFile.Close()
@@ -22,19 +54,7 @@ func main() {
 		return
 	}
 
-	// Map to keep track of all currently connected clients
-	clients := make(map[net.Conn]internal.Client)
-	// Mutex key to prevent data races when multiple goroutines access the clients map
-	var key sync.Mutex
-
-	// Channel for central message broadcasting
-	broadcast := make(chan internal.Message)
-
-	// Slice to hold the chat history so new clients can instantly catch up
-	var history []string
-
-	// Start the central broadcaster goroutine
-	go internal.Broadcaster(broadcast, clients, &key)
+	manager := internal.NewRoomManager()
 
 	// Main server loop to continuously accept incoming connections
 	for {
@@ -44,24 +64,34 @@ func main() {
 			log.Println("Error accepting connection:", err)
 			continue
 		} else {
-			key.Lock()
+			manager.Mutex.Lock()
 			// Enforce the maximum connection limit (Task requirement: Max 10 connections)
-			if len(clients) >= 10 {
-				if _, err := fmt.Fprintln(conn, "Server is on it's full capacity, try again later"); err != nil {
+			if manager.TotalClients >= 10 {
+				manager.Mutex.Unlock()
+				if _, err := fmt.Fprintln(conn, "Server is on its full capacity, try again later"); err != nil {
 					log.Printf("Error writing capacity message to %s: %v\n", conn.RemoteAddr().String(), err)
 				}
 				conn.Close()
-				key.Unlock()
 				continue
 			} else {
-				// Add the new client to the active clients map
-				clients[conn] = internal.Client{}
-				key.Unlock()
+				manager.TotalClients++
+				manager.Mutex.Unlock()
 
 				// Start a new goroutine to handle this client concurrently so the loop isn't blocked
-				go internal.HandleClient(conn, clients, &key, broadcast, &history)
+				go internal.HandleClient(conn, manager)
 			}
 		}
 
 	}
+}
+
+func runCLIClient(addr string) {
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		fmt.Println("Connection error:", err)
+		return
+	}
+	defer conn.Close()
+	go io.Copy(os.Stdout, conn)
+	io.Copy(conn, os.Stdin)
 }

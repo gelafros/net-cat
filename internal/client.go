@@ -6,7 +6,6 @@ import (
 	"log"
 	"net"
 	"strings"
-	"sync"
 	"time"
 )
 
@@ -22,19 +21,35 @@ type Client struct {
 	channel chan string
 }
 
+// Struct to pass the updated state to the clientWriter safely
+type clientState struct {
+	colorCode string
+	name      string
+}
+
 // Background writer goroutine dedicated to a single client
-func clientWriter(conn net.Conn, ch chan string) {
-	for msg := range ch {
-		if !strings.HasSuffix(msg, "\n") {
-			msg += "\n"
+func clientWriter(conn net.Conn, ch chan string, stateChan chan clientState, initialState clientState) {
+	state := initialState
+	for {
+		select {
+		case newState := <-stateChan:
+			state = newState
+		case msg, ok := <-ch:
+			if !ok {
+				return
+			}
+			if !strings.HasSuffix(msg, "\n") {
+				msg += "\n"
+			}
+			// Clear the current line, print the message, and actively redraw the prompt
+			prompt := fmt.Sprintf("%s[%s][%s]:\033[0m", state.colorCode, time.Now().Format("2006-01-02 15:04:05"), state.name)
+			fmt.Fprintf(conn, "\r\033[2K%s%s", msg, prompt)
 		}
-		// Insert the message ABOVE the user's input line so their typing is preserved
-		fmt.Fprintf(conn, "\033[s\r\033[L%s\033[u\033[1B", msg)
 	}
 }
 
-// Handles conns,names,chat history,and broadcasts names
-func HandleClient(conn net.Conn, clients map[net.Conn]Client, key *sync.Mutex, broadcast chan Message, history *[]string) {
+// Handles conns,names,chat history,and broadcasts names within specific rooms
+func HandleClient(conn net.Conn, manager *RoomManager) {
 	var name string
 
 	// Default color is standard terminal color (ANSI reset code)
@@ -43,26 +58,16 @@ func HandleClient(conn net.Conn, clients map[net.Conn]Client, key *sync.Mutex, b
 	// Capture the client's network address for our server logs
 	addr := conn.RemoteAddr().String()
 
-	defer func() {
-		// Waits until the whole func is run and safely removes the client from the clients map
-		key.Lock()
-		if clientStruct, ok := clients[conn]; ok && clientStruct.channel != nil {
-			// Close the channel so the clientWriter goroutine stops cleanly
-			close(clientStruct.channel)
-		}
-		delete(clients, conn)
-		key.Unlock()
+	manager.Mutex.Lock()
+	currRoom := manager.Rooms["Main"]
+	manager.Mutex.Unlock()
 
-		// If the user successfully joined
-		if name != "" {
-			leaveMsg := fmt.Sprintf("User [%s] has left our chat...", name)
-			key.Lock()
-			*history = append(*history, leaveMsg)
-			key.Unlock()
-			broadcast <- Message{Text: leaveMsg, Sender: conn}
-			log.Println("EVENT:", leaveMsg) // Save leave event to file
-		}
-		// log.Printf("Client disconnected: %s\n", addr)
+	defer func() {
+		manager.Mutex.Lock()
+		manager.TotalClients--
+		manager.Mutex.Unlock()
+
+		manager.RemoveClient(currRoom, conn, name)
 		conn.Close()
 	}()
 
@@ -96,6 +101,8 @@ func HandleClient(conn net.Conn, clients map[net.Conn]Client, key *sync.Mutex, b
 		return
 	}
 
+	var stateChan chan clientState
+
 	// The username chosen by the client
 	name = msgscanner.Text()
 	// Keep looping until a valid and unique name is provided
@@ -106,27 +113,25 @@ func HandleClient(conn net.Conn, clients map[net.Conn]Client, key *sync.Mutex, b
 				return
 			}
 		} else {
-			// Safely check if the name is already used
-			key.Lock()
+			currRoom.Mutex.Lock()
 			isTaken := false
-			for _, existingClient := range clients {
+			for _, existingClient := range currRoom.Clients {
 				if existingClient.Name == name {
 					isTaken = true
 					break
 				}
 			}
 			if !isTaken {
-				// Initialize the struct and its dedicated channel
 				clientChannel := make(chan string, 100) // Give them a mailbox that holds up to 100 unread messages
-				clients[conn] = Client{Name: name, channel: clientChannel}
+				currRoom.Clients[conn] = Client{Name: name, channel: clientChannel}
+				currRoom.Mutex.Unlock()
 
-				key.Unlock()
-
+				stateChan = make(chan clientState, 10)
 				// Start the background writer specifically for this client
-				go clientWriter(conn, clientChannel)
+				go clientWriter(conn, clientChannel, stateChan, clientState{colorCode: colorCode, name: name})
 				break
 			}
-			key.Unlock()
+			currRoom.Mutex.Unlock()
 			if _, err := fmt.Fprint(conn, "\nName already taken, try another\n[ENTER YOUR NAME]: "); err != nil {
 				log.Printf("Write error to %s: %v\n", addr, err)
 				return
@@ -182,14 +187,14 @@ func HandleClient(conn net.Conn, clients map[net.Conn]Client, key *sync.Mutex, b
 	fmt.Fprintln(conn, zone01Logo)
 
 	// Print the past chat history for the new user
-	key.Lock()
-	for _, historyMsg := range *history {
+	currRoom.Mutex.Lock()
+	for _, historyMsg := range currRoom.History {
 		if _, err := fmt.Fprintln(conn, historyMsg); err != nil {
 			log.Printf("Write error to %s: %v\n", addr, err)
 			break
 		}
 	}
-	key.Unlock()
+	currRoom.Mutex.Unlock()
 
 	// Let the user know how to see available commands
 	if _, err := fmt.Fprint(conn, "Type /help for instructions\n\n"); err != nil {
@@ -199,13 +204,13 @@ func HandleClient(conn net.Conn, clients map[net.Conn]Client, key *sync.Mutex, b
 
 	// Announce the new client to the rest of the chat room
 	joinMsg := fmt.Sprintf("User [%s] has joined our chat...", name)
-	key.Lock()
-	*history = append(*history, joinMsg)
-	key.Unlock()
+	currRoom.Mutex.Lock()
+	currRoom.History = append(currRoom.History, joinMsg)
+	currRoom.Mutex.Unlock()
 	log.Println("EVENT:", joinMsg) // Save join event to file
 
 	// Send the join message to the central broadcast to send to receivers
-	broadcast <- Message{Text: joinMsg, Sender: conn}
+	currRoom.Broadcast <- Message{Text: joinMsg, Sender: conn}
 
 	// Wait for new messages from this client
 	for msgscanner.Scan() {
@@ -251,19 +256,41 @@ func HandleClient(conn net.Conn, clients map[net.Conn]Client, key *sync.Mutex, b
 			continue
 		}
 
+		if isRoomsCmd := handleRooms(msg, conn, manager); isRoomsCmd {
+			fmt.Fprintf(conn, "%s[%s][%s]:\033[0m", colorCode, time.Now().Format("2006-01-02 15:04:05"), name)
+			continue
+		}
+
+		if isCreateCmd := handleCreate(msg, conn, manager); isCreateCmd {
+			fmt.Fprintf(conn, "%s[%s][%s]:\033[0m", colorCode, time.Now().Format("2006-01-02 15:04:05"), name)
+			continue
+		}
+
+		if isJoinCmd := handleJoin(msg, conn, name, &currRoom, manager); isJoinCmd {
+			fmt.Fprintf(conn, "%s[%s][%s]:\033[0m", colorCode, time.Now().Format("2006-01-02 15:04:05"), name)
+			continue
+		}
+
+		if isLeaveCmd := handleLeave(msg, conn, name, &currRoom, manager); isLeaveCmd {
+			fmt.Fprintf(conn, "%s[%s][%s]:\033[0m", colorCode, time.Now().Format("2006-01-02 15:04:05"), name)
+			continue
+		}
+
 		// Check if the user is trying to change their color
-		if isColorCmd := handleColor(msg, conn, &colorCode, name, key, broadcast, history); isColorCmd {
+		if isColorCmd := handleColor(msg, conn, &colorCode, name, &currRoom.Mutex, currRoom.Broadcast, &currRoom.History); isColorCmd {
+			stateChan <- clientState{colorCode: colorCode, name: name}
 			fmt.Fprintf(conn, "%s[%s][%s]:\033[0m", colorCode, time.Now().Format("2006-01-02 15:04:05"), name)
 			continue
 		}
 
 		// Check if the user is trying to change their name
-		if isNameCmd := handleName(msg, conn, &name, clients, key, broadcast, history); isNameCmd {
+		if isNameCmd := handleName(msg, conn, &name, currRoom.Clients, &currRoom.Mutex, currRoom.Broadcast, &currRoom.History); isNameCmd {
+			stateChan <- clientState{colorCode: colorCode, name: name}
 			fmt.Fprintf(conn, "%s[%s][%s]:\033[0m", colorCode, time.Now().Format("2006-01-02 15:04:05"), name)
 			continue
 		}
 
-		if isWhisper := handleWhisper(msg, conn, name, clients, key); isWhisper {
+		if isWhisper := handleWhisper(msg, conn, name, currRoom.Clients, &currRoom.Mutex); isWhisper {
 			fmt.Fprintf(conn, "%s[%s][%s]:\033[0m", colorCode, time.Now().Format("2006-01-02 15:04:05"), name)
 			continue
 		}
@@ -278,10 +305,10 @@ func HandleClient(conn net.Conn, clients map[net.Conn]Client, key *sync.Mutex, b
 		// Echo the fully formatted and colored message back to the sender!
 		fmt.Fprintln(conn, formattedMsg)
 
-		key.Lock()
-		*history = append(*history, formattedMsg)
-		key.Unlock()
-		broadcast <- Message{Text: formattedMsg, Sender: conn}
+		currRoom.Mutex.Lock()
+		currRoom.History = append(currRoom.History, formattedMsg)
+		currRoom.Mutex.Unlock()
+		currRoom.Broadcast <- Message{Text: formattedMsg, Sender: conn}
 
 		// Save to file without color codes AND without the duplicate timestamp
 		log.Printf("CHAT: [%s]:%s\n", name, msg)

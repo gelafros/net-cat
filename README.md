@@ -8,10 +8,10 @@ A concurrent TCP chat server written in Go. This project allows multiple clients
 - **Unique Usernames**: Each client must provide a unique, non-empty username upon connecting.
 - **Message Broadcasting**: Messages sent by one client are broadcast to all other connected clients.
 - **Commands & Customization**:
-  - `--name=<name>` to dynamically change your display name.
-  - `--color=<color>` to change message colors (red, green, yellow, blue, magenta, cyan).
-  - `--whisper=<name> <msg>` to send private direct messages to other users.
-  - `--tableflip` to send an ASCII table flip.
+  - `/name=<name>` to dynamically change your display name.
+  - `/color=<color>` to change message colors (red, green, yellow, blue, magenta, cyan).
+  - `/whisper=<name> <msg>` to send private direct messages to other users.
+  - `/tableflip` to send an ASCII table flip.
   - `/help` to show the available commands.
 - **Security & Stability**: Filters ANSI escape sequences to prevent terminal injection and uses the Client-Writer pattern to prevent slow clients from blocking the server.
 - **Server Logging**: Maintains a persistent `server_logs.txt` for server events and chat history.
@@ -61,7 +61,7 @@ go run .
 Then start the UI client in another terminal:
 
 ```sh
-go run ./cmd/client
+go run . -ui
 ```
 
 To connect to a custom server address:
