@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -17,9 +18,17 @@ func main() {
 	isClient := false
 	host := "localhost"
 	port := "8989"
+	args := os.Args[1:]
+
+	// Early check for Args errors
+	if len(args) == 2 && args[1] == host {
+		fmt.Println()
+		fmt.Println(errors.New("[USAGE]: ./TCPChat $port\n"))
+		return
+	}
 
 	// Parse arguments to determine the execution mode
-	for _, arg := range os.Args[1:] {
+	for _, arg := range args {
 		if arg == "-ui" {
 			isUI = true
 			isClient = true

@@ -72,6 +72,8 @@ func (rm *RoomManager) RemoveClient(currRoom *Room, conn net.Conn, name string) 
 	}
 	currRoom.Mutex.Unlock()
 	rm.Mutex.Unlock()
+
+	rm.BroadcastRoomsUpdate()
 }
 
 // CreateRoom creates a new room safely.
@@ -84,6 +86,7 @@ func (rm *RoomManager) CreateRoom(roomName string) error {
 	newRoom := NewRoom(roomName)
 	rm.Rooms[roomName] = newRoom
 	go Broadcaster(newRoom.Broadcast, newRoom.Clients, &newRoom.Mutex)
+	go rm.BroadcastRoomsUpdate()
 	return nil
 }
 
@@ -135,6 +138,8 @@ func (rm *RoomManager) ChangeRoom(currRoom *Room, roomName string, conn net.Conn
 	targetRoom.Clients[conn] = clientInfo
 	targetRoom.Mutex.Unlock()
 
+	rm.BroadcastRoomsUpdate()
+
 	return targetRoom, nil
 }
 
@@ -150,4 +155,31 @@ func (rm *RoomManager) ListRooms() []string {
 		roomInfo = append(roomInfo, fmt.Sprintf("- %s (%d users)", name, count))
 	}
 	return roomInfo
+}
+
+// BroadcastRoomsUpdate sends a fresh rooms snapshot to all connected clients.
+func (rm *RoomManager) BroadcastRoomsUpdate() {
+	rooms := rm.ListRooms()
+
+	rm.Mutex.Lock()
+	recipients := make([]net.Conn, 0)
+	for _, room := range rm.Rooms {
+		room.Mutex.Lock()
+		for conn := range room.Clients {
+			recipients = append(recipients, conn)
+		}
+		room.Mutex.Unlock()
+	}
+	rm.Mutex.Unlock()
+
+	for _, conn := range recipients {
+		if _, err := fmt.Fprintln(conn, "Available rooms:"); err != nil {
+			continue
+		}
+		for _, r := range rooms {
+			if _, err := fmt.Fprintln(conn, r); err != nil {
+				break
+			}
+		}
+	}
 }

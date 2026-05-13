@@ -125,6 +125,7 @@ func HandleClient(conn net.Conn, manager *RoomManager) {
 				clientChannel := make(chan string, 100) // Give them a mailbox that holds up to 100 unread messages
 				currRoom.Clients[conn] = Client{Name: name, channel: clientChannel}
 				currRoom.Mutex.Unlock()
+				manager.BroadcastRoomsUpdate()
 
 				stateChan = make(chan clientState, 10)
 				// Start the background writer specifically for this client
