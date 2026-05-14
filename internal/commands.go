@@ -230,67 +230,67 @@ func handleCreate(msg string, conn net.Conn, manager *RoomManager) bool {
 }
 
 // handleJoin lets a user move to another room.
-func handleJoin(msg string, conn net.Conn, name string, currRoom **Room, manager *RoomManager) bool {
+func handleJoin(msg string, conn net.Conn, name string, currRoom *Room, manager *RoomManager) (bool, *Room) {
 	if !strings.HasPrefix(msg, "/join=") {
-		return false
+		return false, currRoom
 	}
 	roomName := strings.TrimSpace(strings.TrimPrefix(msg, "/join="))
 
-	targetRoom, err := manager.ChangeRoom(*currRoom, roomName, conn, name)
+	targetRoom, err := manager.ChangeRoom(currRoom, roomName, conn, name)
 	if err != nil {
 		fmt.Fprintln(conn, err.Error())
-		return true
+		return true, currRoom
 	}
 
-	*currRoom = targetRoom
+	currRoom = targetRoom
 
-	fmt.Fprintf(conn, "\n--- Joined Room: %s ---\n", (*currRoom).Name)
-	(*currRoom).Mutex.Lock()
-	for _, h := range (*currRoom).History {
+	fmt.Fprintf(conn, "\n--- Joined Room: %s ---\n", currRoom.Name)
+	currRoom.Mutex.Lock()
+	for _, h := range currRoom.History {
 		fmt.Fprintln(conn, h)
 	}
-	(*currRoom).Mutex.Unlock()
+	currRoom.Mutex.Unlock()
 
 	joinMsg := fmt.Sprintf("User [%s] has joined our chat...", name)
-	(*currRoom).Mutex.Lock()
-	(*currRoom).History = append((*currRoom).History, joinMsg)
-	(*currRoom).Mutex.Unlock()
-	(*currRoom).Broadcast <- Message{Text: joinMsg, Sender: conn}
+	currRoom.Mutex.Lock()
+	currRoom.History = append(currRoom.History, joinMsg)
+	currRoom.Mutex.Unlock()
+	currRoom.Broadcast <- Message{Text: joinMsg, Sender: conn}
 
-	return true
+	return true, currRoom
 }
 
 // handleLeave returns the user to the Main room.
-func handleLeave(msg string, conn net.Conn, name string, currRoom **Room, manager *RoomManager) bool {
+func handleLeave(msg string, conn net.Conn, name string, currRoom *Room, manager *RoomManager) (bool, *Room) {
 	if msg != "/leave" {
-		return false
+		return false, currRoom
 	}
 
-	if (*currRoom).Name == "Main" {
+	if currRoom.Name == "Main" {
 		fmt.Fprintln(conn, "You are already in the Main room.")
-		return true
+		return true, currRoom
 	}
 
-	targetRoom, err := manager.ChangeRoom(*currRoom, "Main", conn, name)
+	targetRoom, err := manager.ChangeRoom(currRoom, "Main", conn, name)
 	if err != nil {
 		fmt.Fprintln(conn, err.Error())
-		return true
+		return true, currRoom
 	}
 
-	*currRoom = targetRoom
+	currRoom = targetRoom
 
 	fmt.Fprintf(conn, "\n--- Returned to Main ---\n")
-	(*currRoom).Mutex.Lock()
-	for _, h := range (*currRoom).History {
+	currRoom.Mutex.Lock()
+	for _, h := range currRoom.History {
 		fmt.Fprintln(conn, h)
 	}
-	(*currRoom).Mutex.Unlock()
+	currRoom.Mutex.Unlock()
 
 	joinMsg := fmt.Sprintf("User [%s] has joined our chat...", name)
-	(*currRoom).Mutex.Lock()
-	(*currRoom).History = append((*currRoom).History, joinMsg)
-	(*currRoom).Mutex.Unlock()
-	(*currRoom).Broadcast <- Message{Text: joinMsg, Sender: conn}
+	currRoom.Mutex.Lock()
+	currRoom.History = append(currRoom.History, joinMsg)
+	currRoom.Mutex.Unlock()
+	currRoom.Broadcast <- Message{Text: joinMsg, Sender: conn}
 
-	return true
+	return true, currRoom
 }

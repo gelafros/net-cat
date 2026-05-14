@@ -268,15 +268,18 @@ func TestHandleJoin(t *testing.T) {
 	currRoom.Clients[clientConn] = Client{Name: "Tester", channel: make(chan string, 10)}
 
 	// Valid join
-	if handled := handleJoin("/join=TestRoom", clientConn, "Tester", &currRoom, manager); !handled {
+	handled, newRoom := handleJoin("/join=TestRoom", clientConn, "Tester", currRoom, manager)
+	if !handled {
 		t.Errorf("Expected /join to be handled")
 	}
+	currRoom = newRoom
 	if currRoom.Name != "TestRoom" {
 		t.Errorf("Expected currRoom to change to TestRoom")
 	}
 
 	// Invalid command
-	if handled := handleJoin("/help", clientConn, "Tester", &currRoom, manager); handled {
+	handled, currRoom = handleJoin("/help", clientConn, "Tester", currRoom, manager)
+	if handled {
 		t.Errorf("Expected non-join command to be ignored")
 	}
 }
@@ -304,20 +307,24 @@ func TestHandleLeave(t *testing.T) {
 	testRoom.Clients[clientConn] = Client{Name: "Tester", channel: make(chan string, 10)}
 
 	// Valid leave
-	if handled := handleLeave("/leave", clientConn, "Tester", &currRoom, manager); !handled {
+	handled, newRoom := handleLeave("/leave", clientConn, "Tester", currRoom, manager)
+	if !handled {
 		t.Errorf("Expected /leave to be handled")
 	}
+	currRoom = newRoom
 	if currRoom.Name != "Main" {
 		t.Errorf("Expected currRoom to change to Main")
 	}
 
 	// Leave while in Main
-	if handled := handleLeave("/leave", clientConn, "Tester", &currRoom, manager); !handled {
+	handled, currRoom = handleLeave("/leave", clientConn, "Tester", currRoom, manager)
+	if !handled {
 		t.Errorf("Expected /leave while in Main to be handled")
 	}
 
 	// Invalid command
-	if handled := handleLeave("/help", clientConn, "Tester", &currRoom, manager); handled {
+	handled, currRoom = handleLeave("/help", clientConn, "Tester", currRoom, manager)
+	if handled {
 		t.Errorf("Expected non-leave command to be ignored")
 	}
 }

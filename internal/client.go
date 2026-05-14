@@ -267,12 +267,16 @@ func HandleClient(conn net.Conn, manager *RoomManager) {
 			continue
 		}
 
-		if isJoinCmd := handleJoin(msg, conn, name, &currRoom, manager); isJoinCmd {
+		isJoinCmd, newRoomJoin := handleJoin(msg, conn, name, currRoom, manager)
+		if isJoinCmd {
+			currRoom = newRoomJoin
 			fmt.Fprintf(conn, "%s[%s][%s]:\033[0m", colorCode, time.Now().Format("2006-01-02 15:04:05"), name)
 			continue
 		}
 
-		if isLeaveCmd := handleLeave(msg, conn, name, &currRoom, manager); isLeaveCmd {
+		isLeaveCmd, newRoomLeave := handleLeave(msg, conn, name, currRoom, manager)
+		if isLeaveCmd {
+			currRoom = newRoomLeave
 			fmt.Fprintf(conn, "%s[%s][%s]:\033[0m", colorCode, time.Now().Format("2006-01-02 15:04:05"), name)
 			continue
 		}
