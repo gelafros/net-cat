@@ -30,3 +30,11 @@
 - **Security Enhancements**: Added a robust ANSI escape sequence stripper to sanitize user input and prevent terminal UI injection (e.g., arrow key overwrites, backspaces).
 - **Command Refactor**: Centralized all command parsing (`/help`, `--name`, `--color`, `--tableflip`, `--whisper`) into `internal/commands.go` using the Separation of Concerns pattern.
 - **Branch Merge**: Merged the feature branch `elafrostoxanakanw` into `main` and safely removed the deprecated `handlers/` directory.
+
+## Phase 6: Test-Driven Development (TDD) & Audit Prep
+- **Core Testing**: Introduced comprehensive unit tests for `internal/room.go`, `internal/client.go`, `internal/commands.go`, and `internal/server.go`.
+- **Mock Connections**: Utilized `net.Pipe()` to simulate in-memory TCP client-server connections, achieving high test coverage without opening real ports.
+- **Argument Parsing Refactor**: Refactored CLI argument parsing to ensure the `[USAGE]` requirement is robustly tested and met.
+
+## Phase 7: Final Polish
+- **Branch Merge**: Merged the feature branch `ui` into `main`, bringing in the Terminal UI client bonus feature.

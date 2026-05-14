@@ -11,12 +11,12 @@ import (
 
 // Checks if the user typed a color command and returns the color code
 func handleColor(msg string, conn net.Conn, colorCode *string, name string, key *sync.Mutex, broadcast chan Message, history *[]string) bool {
-	if !strings.HasPrefix(msg, "--color") {
+	if !strings.HasPrefix(msg, "/color") {
 		return false
 	}
 
-	// Remove "--color" and "=" to get just the color name
-	colorInput := strings.TrimSpace(strings.TrimPrefix(msg, "--color"))
+	// Remove "/color" and "=" to get just the color name
+	colorInput := strings.TrimSpace(strings.TrimPrefix(msg, "/color"))
 	colorInput = strings.TrimPrefix(colorInput, "=")
 	colorInput = strings.TrimSpace(colorInput)
 
@@ -45,7 +45,7 @@ func handleColor(msg string, conn net.Conn, colorCode *string, name string, key 
 
 	var changeMsg string
 	if newColor == "\033[0m" {
-		changeMsg = fmt.Sprintf("User [%s] has reseted their color", name)
+		changeMsg = fmt.Sprintf("User [%s] has reset their color", name)
 	} else {
 		changeMsg = fmt.Sprintf("User [%s] has changed their color to %s", name, colorInput)
 	}
@@ -63,17 +63,17 @@ func handleColor(msg string, conn net.Conn, colorCode *string, name string, key 
 
 // Changes the user's name if they use the name command and the name is free
 func handleName(msg string, conn net.Conn, name *string, clients map[net.Conn]Client, key *sync.Mutex, broadcast chan Message, history *[]string) bool {
-	if !strings.HasPrefix(msg, "--name") {
+	if !strings.HasPrefix(msg, "/name") {
 		return false
 	}
 
-	// Remove "--name" and "=" to get the new name
-	newName := strings.TrimSpace(strings.TrimPrefix(msg, "--name"))
+	// Remove "/name" and "=" to get the new name
+	newName := strings.TrimSpace(strings.TrimPrefix(msg, "/name"))
 	newName = strings.TrimPrefix(newName, "=")
 	newName = strings.TrimSpace(newName)
 
 	if newName == "" {
-		fmt.Fprintln(conn, "Name cannot be empty. Try: --name=NewName")
+		fmt.Fprintln(conn, "Name cannot be empty. Try: /name=NewName")
 		return true
 	}
 
@@ -114,10 +114,18 @@ func handleName(msg string, conn net.Conn, name *string, clients map[net.Conn]Cl
 func HandleHelp(msg string, conn net.Conn) bool {
 	if strings.TrimSpace(msg) == "/help" {
 		instructions := "Available commands:\n" +
-			"  --color=<color>  Change your message color (e.g., --color=red)\n" +
-			"  --name=<name>    Change your display name (e.g., --name=Bob)\n" +
-			"  --tableflip      Flip a table\n" +
-			"  --whisper=<name> <msg> Send a private message (e.g., --whisper=Bob hello!)"
+			"  /color=<color>   Change your message color (e.g., /color=red)\n" +
+			"  /name=<name>     Change your display name (e.g., /name=Bob)\n" +
+			"  /create=<room>   Create a new chat room\n" +
+			"  /join=<room>     Join an existing chat room\n" +
+			"  /leave           Leave current room and return to Main\n" +
+			"  /rooms           List all available active rooms\n" +
+			"  /tableflip       Flip a table\n" +
+			"  /whisper=<name> <msg> Send a private message (e.g., /whisper=Bob hello!)\n" +
+			"UI scrolling:\n" +
+			"  PageUp/PageDown or mouse wheel scroll chat history\n" +
+			"  Home jumps to the top, End follows the latest messages\n" +
+			"  Up/Down recalls your previous sent messages in the UI input"
 		fmt.Fprintln(conn, instructions)
 		return true
 	}
@@ -126,7 +134,7 @@ func HandleHelp(msg string, conn net.Conn) bool {
 
 // Transforms the tableflip command into the ASCII art
 func HandleTableFlip(msg string) string {
-	if strings.TrimSpace(msg) == "--tableflip" {
+	if strings.TrimSpace(msg) == "/tableflip" {
 		return "(╯°□°)╯︵ ┻━┻"
 	}
 	return msg
@@ -134,17 +142,17 @@ func HandleTableFlip(msg string) string {
 
 // Sends a private message directly to a specific user
 func handleWhisper(msg string, senderConn net.Conn, senderName string, clients map[net.Conn]Client, key *sync.Mutex) bool {
-	if !strings.HasPrefix(msg, "--whisper=") {
+	if !strings.HasPrefix(msg, "/whisper=") {
 		return false // Not a whisper command, let the client loop handle it normally
 	}
 
-	// Remove the --prefix
-	trimmed := strings.TrimPrefix(msg, "--whisper=")
+	// Remove the /prefix
+	trimmed := strings.TrimPrefix(msg, "/whisper=")
 
 	// Split the remaining string into exactly 2 pieces at the very first space
 	parts := strings.SplitN(trimmed, " ", 2)
 	if len(parts) < 2 || strings.TrimSpace(parts[1]) == "" {
-		fmt.Fprintln(senderConn, "Usage: --whisper=<name> <message>")
+		fmt.Fprintln(senderConn, "Usage: /whisper=<name> <message>")
 		return true
 	}
 
@@ -174,10 +182,115 @@ func handleWhisper(msg string, senderConn net.Conn, senderName string, clients m
 
 	// Format the messages in Magenta to stand out, and send them!
 	timeStr := time.Now().Format("2006-01-02 15:04:05")
-	targetChan <- fmt.Sprintf("\033[35m[%s][Whisper from %s]:\033[0m %s", timeStr, senderName, whisperMsg)
+	select {
+	case targetChan <- fmt.Sprintf("\033[35m[%s][Whisper from %s]:\033[0m %s", timeStr, senderName, whisperMsg):
+	default:
+		fmt.Fprintln(senderConn, "Message could not be delivered, user's mailbox is full.")
+	}
 	fmt.Fprintf(senderConn, "\033[35m[%s][Whisper to %s]:\033[0m %s\n", timeStr, targetName, whisperMsg)
 	log.Printf("EVENT: [%s] whispered to [%s]\n", senderName, targetName)
 	log.Printf("WHISPER: [%s] to [%s]: %s\n", senderName, targetName, whisperMsg)
+
+	return true
+}
+
+// handleRooms lists all available rooms.
+func handleRooms(msg string, conn net.Conn, manager *RoomManager) bool {
+	if strings.TrimSpace(msg) != "/rooms" {
+		return false
+	}
+
+	rooms := manager.ListRooms()
+	fmt.Fprintln(conn, "Available rooms:")
+	for _, r := range rooms {
+		fmt.Fprintln(conn, r)
+	}
+	return true
+}
+
+// handleCreate creates a new room if it doesn't already exist.
+func handleCreate(msg string, conn net.Conn, manager *RoomManager) bool {
+	if !strings.HasPrefix(msg, "/create=") {
+		return false
+	}
+	roomName := strings.TrimSpace(strings.TrimPrefix(msg, "/create="))
+	if roomName == "" {
+		fmt.Fprintln(conn, "Room name cannot be empty.")
+		return true
+	}
+
+	err := manager.CreateRoom(roomName)
+	if err != nil {
+		fmt.Fprintln(conn, err.Error())
+		return true
+	}
+
+	fmt.Fprintln(conn, "Room ["+roomName+"] created! Use /join="+roomName+" to enter.")
+	return true
+}
+
+// handleJoin lets a user move to another room.
+func handleJoin(msg string, conn net.Conn, name string, currRoom **Room, manager *RoomManager) bool {
+	if !strings.HasPrefix(msg, "/join=") {
+		return false
+	}
+	roomName := strings.TrimSpace(strings.TrimPrefix(msg, "/join="))
+
+	targetRoom, err := manager.ChangeRoom(*currRoom, roomName, conn, name)
+	if err != nil {
+		fmt.Fprintln(conn, err.Error())
+		return true
+	}
+
+	*currRoom = targetRoom
+
+	fmt.Fprintf(conn, "\n--- Joined Room: %s ---\n", (*currRoom).Name)
+	(*currRoom).Mutex.Lock()
+	for _, h := range (*currRoom).History {
+		fmt.Fprintln(conn, h)
+	}
+	(*currRoom).Mutex.Unlock()
+
+	joinMsg := fmt.Sprintf("User [%s] has joined our chat...", name)
+	(*currRoom).Mutex.Lock()
+	(*currRoom).History = append((*currRoom).History, joinMsg)
+	(*currRoom).Mutex.Unlock()
+	(*currRoom).Broadcast <- Message{Text: joinMsg, Sender: conn}
+
+	return true
+}
+
+// handleLeave returns the user to the Main room.
+func handleLeave(msg string, conn net.Conn, name string, currRoom **Room, manager *RoomManager) bool {
+	if msg != "/leave" {
+		return false
+	}
+
+	if (*currRoom).Name == "Main" {
+		fmt.Fprintln(conn, "You are already in the Main room.")
+		return true
+	}
+
+	targetRoom, err := manager.ChangeRoom(*currRoom, "Main", conn, name)
+	if err != nil {
+		fmt.Fprintln(conn, err.Error())
+		return true
+	}
+
+	*currRoom = targetRoom
+
+	fmt.Fprintf(conn, "\n--- Returned to Main ---\n")
+	(*currRoom).Mutex.Lock()
+	for _, h := range (*currRoom).History {
+		fmt.Fprintln(conn, h)
+	}
+	(*currRoom).Mutex.Unlock()
+
+	joinMsg := fmt.Sprintf("User [%s] has joined our chat...", name)
+	(*currRoom).Mutex.Lock()
+	(*currRoom).History = append((*currRoom).History, joinMsg)
+	(*currRoom).Mutex.Unlock()
+	(*currRoom).Broadcast <- Message{Text: joinMsg, Sender: conn}
 
 	return true
 }

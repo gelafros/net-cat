@@ -46,3 +46,36 @@ func TestGetPort(t *testing.T) {
 		})
 	}
 }
+
+func TestStartServer(t *testing.T) {
+	// Test 1: Successful start (using port 0 to avoid conflicts)
+	t.Run("Valid arguments", func(t *testing.T) {
+		listener, err := StartServer([]string{"./TCPChat", "0"})
+		if err != nil {
+			t.Fatalf("Expected no error, got: %v", err)
+		}
+		if listener == nil {
+			t.Fatalf("Expected a valid listener, got nil")
+		}
+		listener.Close() // Clean up the listener so it doesn't leak memory
+	})
+
+	// Test 2: Invalid arguments (should fail getPort)
+	t.Run("Invalid arguments", func(t *testing.T) {
+		listener, err := StartServer([]string{"./TCPChat", "2525", "localhost"})
+		if err == nil {
+			t.Errorf("Expected an error for invalid arguments, got nil")
+		}
+		if listener != nil {
+			listener.Close()
+		}
+	})
+
+	// Test 3: Invalid port number (should fail net.Listen)
+	t.Run("Invalid port", func(t *testing.T) {
+		_, err := StartServer([]string{"./TCPChat", "999999"})
+		if err == nil {
+			t.Errorf("Expected an error for invalid port, got nil")
+		}
+	})
+}

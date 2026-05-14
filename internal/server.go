@@ -8,6 +8,7 @@ import (
 
 // Decides which port we are listening on. Default 8989
 func getPort(args []string) (string, error) {
+
 	if len(args) == 1 {
 		return "8989", nil
 	}
