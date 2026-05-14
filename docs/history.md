@@ -38,3 +38,4 @@
 
 ## Phase 7: Final Polish
 - **Branch Merge**: Merged the feature branch `ui` into `main`, bringing in the Terminal UI client bonus feature.
+- **Code Refactoring**: Improved `handleJoin` and `handleLeave` functions to return updated room state instead of utilizing double pointers, improving overall code readability and idiomatic design.
