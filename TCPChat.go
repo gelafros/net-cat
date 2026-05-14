@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -20,10 +19,10 @@ func main() {
 	port := "8989"
 	args := os.Args[1:]
 
-	// Early check for Args errors
-	if len(args) == 2 && args[1] == host {
-		fmt.Println()
-		fmt.Println(errors.New("[USAGE]: ./TCPChat $port\n"))
+	// If the first argument looks like a port, and there are more arguments,
+	// it's an invalid server command format.
+	if len(args) > 1 && isPort(args[0]) {
+		fmt.Println("[USAGE]: ./TCPChat $port")
 		return
 	}
 
@@ -103,4 +102,14 @@ func runCLIClient(addr string) {
 	defer conn.Close()
 	go io.Copy(os.Stdout, conn)
 	io.Copy(conn, os.Stdin)
+}
+
+// Simple helper to check if a string consists only of digits
+func isPort(s string) bool {
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
 }
