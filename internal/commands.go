@@ -9,6 +9,32 @@ import (
 	"time"
 )
 
+// Helper to safely deliver system messages to a client's dedicated channel
+func deliverMsg(conn net.Conn, manager *RoomManager, msg string) {
+	manager.Mutex.Lock()
+	var ch chan string
+	for _, room := range manager.Rooms {
+		room.Mutex.Lock()
+		if client, exists := room.Clients[conn]; exists {
+			ch = client.channel
+		}
+		room.Mutex.Unlock()
+		if ch != nil {
+			break
+		}
+	}
+	manager.Mutex.Unlock()
+
+	if ch != nil {
+		select {
+		case ch <- msg:
+		default:
+		}
+	} else {
+		fmt.Fprintln(conn, msg)
+	}
+}
+
 // Checks if the user typed a color command and returns the color code
 func handleColor(msg string, conn net.Conn, colorCode *string, name string, key *sync.Mutex, broadcast chan Message, history *[]string) bool {
 	if !strings.HasPrefix(msg, "/color") {
@@ -201,10 +227,15 @@ func handleRooms(msg string, conn net.Conn, manager *RoomManager) bool {
 	}
 
 	rooms := manager.ListRooms()
-	fmt.Fprintln(conn, "Available rooms:")
-	for _, r := range rooms {
-		fmt.Fprintln(conn, r)
+	var response string
+	response += "Available rooms:\n"
+	for i, r := range rooms {
+		response += r
+		if i < len(rooms)-1 {
+			response += "\n"
+		}
 	}
+	deliverMsg(conn, manager, response)
 	return true
 }
 
@@ -215,17 +246,19 @@ func handleCreate(msg string, conn net.Conn, manager *RoomManager) bool {
 	}
 	roomName := strings.TrimSpace(strings.TrimPrefix(msg, "/create="))
 	if roomName == "" {
-		fmt.Fprintln(conn, "Room name cannot be empty.")
+		deliverMsg(conn, manager, "Room name cannot be empty.")
 		return true
 	}
 
 	err := manager.CreateRoom(roomName)
 	if err != nil {
-		fmt.Fprintln(conn, err.Error())
+		deliverMsg(conn, manager, err.Error())
 		return true
 	}
 
-	fmt.Fprintln(conn, "Room ["+roomName+"] created! Use /join="+roomName+" to enter.")
+	deliverMsg(conn, manager, "Room ["+roomName+"] created! Use /join="+roomName+" to enter.")
+	manager.BroadcastRoomsUpdate()
+	log.Printf("EVENT: Room [%s] was created\n", roomName)
 	return true
 }
 
@@ -238,24 +271,32 @@ func handleJoin(msg string, conn net.Conn, name string, currRoom *Room, manager 
 
 	targetRoom, err := manager.ChangeRoom(currRoom, roomName, conn, name)
 	if err != nil {
-		fmt.Fprintln(conn, err.Error())
+		deliverMsg(conn, manager, err.Error())
 		return true, currRoom
 	}
 
 	currRoom = targetRoom
 
-	fmt.Fprintf(conn, "\n--- Joined Room: %s ---\n", currRoom.Name)
+	var response string
+	response += fmt.Sprintf("\n--- Joined Room: %s ---\n", currRoom.Name)
 	currRoom.Mutex.Lock()
-	for _, h := range currRoom.History {
-		fmt.Fprintln(conn, h)
+	for i, h := range currRoom.History {
+		response += h
+		if i < len(currRoom.History)-1 {
+			response += "\n"
+		}
 	}
 	currRoom.Mutex.Unlock()
+	response = strings.TrimSuffix(response, "\n")
+	deliverMsg(conn, manager, response)
 
 	joinMsg := fmt.Sprintf("User [%s] has joined our chat...", name)
 	currRoom.Mutex.Lock()
 	currRoom.History = append(currRoom.History, joinMsg)
 	currRoom.Mutex.Unlock()
 	currRoom.Broadcast <- Message{Text: joinMsg, Sender: conn}
+	log.Printf("EVENT: User [%s] joined room [%s]\n", name, currRoom.Name)
+	manager.BroadcastRoomsUpdate()
 
 	return true, currRoom
 }
@@ -267,30 +308,38 @@ func handleLeave(msg string, conn net.Conn, name string, currRoom *Room, manager
 	}
 
 	if currRoom.Name == "Main" {
-		fmt.Fprintln(conn, "You are already in the Main room.")
+		deliverMsg(conn, manager, "You are already in the Main room.")
 		return true, currRoom
 	}
 
 	targetRoom, err := manager.ChangeRoom(currRoom, "Main", conn, name)
 	if err != nil {
-		fmt.Fprintln(conn, err.Error())
+		deliverMsg(conn, manager, err.Error())
 		return true, currRoom
 	}
 
 	currRoom = targetRoom
 
-	fmt.Fprintf(conn, "\n--- Returned to Main ---\n")
+	var response string
+	response += "\n--- Returned to Main ---\n"
 	currRoom.Mutex.Lock()
-	for _, h := range currRoom.History {
-		fmt.Fprintln(conn, h)
+	for i, h := range currRoom.History {
+		response += h
+		if i < len(currRoom.History)-1 {
+			response += "\n"
+		}
 	}
 	currRoom.Mutex.Unlock()
+	response = strings.TrimSuffix(response, "\n")
+	deliverMsg(conn, manager, response)
 
 	joinMsg := fmt.Sprintf("User [%s] has joined our chat...", name)
 	currRoom.Mutex.Lock()
 	currRoom.History = append(currRoom.History, joinMsg)
 	currRoom.Mutex.Unlock()
 	currRoom.Broadcast <- Message{Text: joinMsg, Sender: conn}
+	log.Printf("EVENT: User [%s] returned to room [%s]\n", name, currRoom.Name)
+	manager.BroadcastRoomsUpdate()
 
 	return true, currRoom
 }

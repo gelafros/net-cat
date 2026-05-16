@@ -125,7 +125,6 @@ func HandleClient(conn net.Conn, manager *RoomManager) {
 				clientChannel := make(chan string, 100) // Give them a mailbox that holds up to 100 unread messages
 				currRoom.Clients[conn] = Client{Name: name, channel: clientChannel}
 				currRoom.Mutex.Unlock()
-				manager.BroadcastRoomsUpdate()
 
 				stateChan = make(chan clientState, 10)
 				// Start the background writer specifically for this client
@@ -213,6 +212,9 @@ func HandleClient(conn net.Conn, manager *RoomManager) {
 	// Send the join message to the central broadcast to send to receivers
 	currRoom.Broadcast <- Message{Text: joinMsg, Sender: conn}
 
+	// Announce the updated room capacities to all users now that the user has fully joined
+	manager.BroadcastRoomsUpdate()
+
 	// Wait for new messages from this client
 	for msgscanner.Scan() {
 		// The actual msg typed by the client
@@ -258,26 +260,22 @@ func HandleClient(conn net.Conn, manager *RoomManager) {
 		}
 
 		if isRoomsCmd := handleRooms(msg, conn, manager); isRoomsCmd {
-			fmt.Fprintf(conn, "%s[%s][%s]:\033[0m", colorCode, time.Now().Format("2006-01-02 15:04:05"), name)
 			continue
 		}
 
 		if isCreateCmd := handleCreate(msg, conn, manager); isCreateCmd {
-			fmt.Fprintf(conn, "%s[%s][%s]:\033[0m", colorCode, time.Now().Format("2006-01-02 15:04:05"), name)
 			continue
 		}
 
 		isJoinCmd, newRoomJoin := handleJoin(msg, conn, name, currRoom, manager)
 		if isJoinCmd {
 			currRoom = newRoomJoin
-			fmt.Fprintf(conn, "%s[%s][%s]:\033[0m", colorCode, time.Now().Format("2006-01-02 15:04:05"), name)
 			continue
 		}
 
 		isLeaveCmd, newRoomLeave := handleLeave(msg, conn, name, currRoom, manager)
 		if isLeaveCmd {
 			currRoom = newRoomLeave
-			fmt.Fprintf(conn, "%s[%s][%s]:\033[0m", colorCode, time.Now().Format("2006-01-02 15:04:05"), name)
 			continue
 		}
 

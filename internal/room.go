@@ -69,6 +69,7 @@ func (rm *RoomManager) RemoveClient(currRoom *Room, conn net.Conn, name string) 
 	currRoom.Mutex.Lock()
 	if len(currRoom.Clients) == 0 && currRoom.Name != "Main" {
 		delete(rm.Rooms, currRoom.Name)
+		log.Printf("EVENT: Room [%s] was deleted (empty)\n", currRoom.Name)
 	}
 	currRoom.Mutex.Unlock()
 	rm.Mutex.Unlock()
@@ -86,7 +87,6 @@ func (rm *RoomManager) CreateRoom(roomName string) error {
 	newRoom := NewRoom(roomName)
 	rm.Rooms[roomName] = newRoom
 	go Broadcaster(newRoom.Broadcast, newRoom.Clients, &newRoom.Mutex)
-	go rm.BroadcastRoomsUpdate()
 	return nil
 }
 
@@ -125,11 +125,13 @@ func (rm *RoomManager) ChangeRoom(currRoom *Room, roomName string, conn net.Conn
 	currRoom.History = append(currRoom.History, leaveMsg)
 	currRoom.Mutex.Unlock()
 	currRoom.Broadcast <- Message{Text: leaveMsg, Sender: conn}
+	log.Printf("EVENT: User [%s] left room [%s]\n", name, currRoom.Name)
 
 	rm.Mutex.Lock()
 	currRoom.Mutex.Lock()
 	if len(currRoom.Clients) == 0 && currRoom.Name != "Main" {
 		delete(rm.Rooms, currRoom.Name)
+		log.Printf("EVENT: Room [%s] was deleted (empty)\n", currRoom.Name)
 	}
 	currRoom.Mutex.Unlock()
 	rm.Mutex.Unlock()
@@ -137,8 +139,6 @@ func (rm *RoomManager) ChangeRoom(currRoom *Room, roomName string, conn net.Conn
 	targetRoom.Mutex.Lock()
 	targetRoom.Clients[conn] = clientInfo
 	targetRoom.Mutex.Unlock()
-
-	rm.BroadcastRoomsUpdate()
 
 	return targetRoom, nil
 }
@@ -161,25 +161,33 @@ func (rm *RoomManager) ListRooms() []string {
 func (rm *RoomManager) BroadcastRoomsUpdate() {
 	rooms := rm.ListRooms()
 
+	var updateMsg string
+	updateMsg += "\033[36mAvailable rooms:\n"
+	for i, r := range rooms {
+		updateMsg += r
+		if i < len(rooms)-1 {
+			updateMsg += "\n"
+		}
+	}
+	updateMsg += "\033[0m"
+
 	rm.Mutex.Lock()
-	recipients := make([]net.Conn, 0)
+	var channels []chan string
 	for _, room := range rm.Rooms {
 		room.Mutex.Lock()
-		for conn := range room.Clients {
-			recipients = append(recipients, conn)
+		for _, client := range room.Clients {
+			if client.channel != nil {
+				channels = append(channels, client.channel)
+			}
 		}
 		room.Mutex.Unlock()
 	}
 	rm.Mutex.Unlock()
 
-	for _, conn := range recipients {
-		if _, err := fmt.Fprintln(conn, "Available rooms:"); err != nil {
-			continue
-		}
-		for _, r := range rooms {
-			if _, err := fmt.Fprintln(conn, r); err != nil {
-				break
-			}
+	for _, ch := range channels {
+		select {
+		case ch <- updateMsg:
+		default:
 		}
 	}
 }
