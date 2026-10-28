@@ -22,8 +22,8 @@ A concurrent TCP chat server written in Go. This project allows multiple clients
 
 1.  **Clone the repository:**
     ```sh
-    git clone https://github.com/gelafros/net_cat
-    cd net_cat
+    git clone https://github.com/gelafros/net-cat
+    cd net-cat
     ```
 
 2.  **Run the server:**
