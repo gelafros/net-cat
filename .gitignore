@@ -1,0 +1,7 @@
+server_logs.txt
+*:Zone.Identifier
+*.test
+.env
+.DS_Store
+.vscode/
+.idea/

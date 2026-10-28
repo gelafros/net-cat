@@ -22,8 +22,8 @@ A concurrent TCP chat server written in Go. This project allows multiple clients
 
 1.  **Clone the repository:**
     ```sh
-    git clone https://platform.zone01.gr/git/gelafros/net-cat
-    cd net-cat
+    git clone https://github.com/gelafros/net_cat
+    cd net_cat
     ```
 
 2.  **Run the server:**
@@ -61,7 +61,7 @@ go run .
 Then start the UI client in another terminal:
 
 ```sh
-go run . -ui
+go run . -ui   # connects to localhost:8989
 ```
 
 To connect to a custom server address:
@@ -71,3 +71,18 @@ go run ./cmd/client -addr localhost:9000
 ```
 
 Inside the UI, type your chat name first, press Enter, and then use the message box to chat. On wider terminals, the right side shows the current users inferred from server join/leave/name-change messages. Server colors from `--color=<color>` are preserved in the chat panel. Use `PageUp`, `PageDown`, or the mouse wheel to scroll through chat history, `Home` to jump to the top, and `End` to follow the latest messages again. Use `Up` and `Down` in the input box to recall messages you already sent. Press `Ctrl+C` to quit.
+
+## Running the tests
+
+```sh
+go vet ./...
+go test -race ./...
+```
+
+## Authors
+
+Built at Zone01 Athens by [gelafros](https://github.com/gelafros) and ktallaris.
+
+## License
+
+MIT, see [LICENSE](LICENSE).
